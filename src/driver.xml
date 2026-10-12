@@ -1,0 +1,125 @@
+<devicedata>
+	<copyright>Copyright 2026 DirectorLink</copyright>
+	<creator>DirectorLink</creator>
+	<manufacturer>Android TV</manufacturer>
+	<name>DirectorLink · Android TV Notifications</name>
+	<model>Google TV, Android TV and Fire TV pop-up notifications</model>
+	<created>10/12/2026 00:00</created>
+	<!-- tools/build.py stamps modified and version from the VERSION file -->
+	<modified>10/12/2026 00:00</modified>
+	<version>0</version>
+	<small image_source="c4z">icons/device_sm.png</small>
+	<large image_source="c4z">icons/device_lg.png</large>
+	<control>lua_gen</control>
+	<controlmethod>ip</controlmethod>
+	<driver>DriverWorks</driver>
+	<minimum_os_version>3.3.0</minimum_os_version>
+	<!-- One driver per TV. Never change or remove event ids, command or property names in later
+	     versions: Control4 projects that already use the driver depend on them. The variables
+	     (LAST_NOTIFICATION, then DIRECTORLINK_NOTIFY and DIRECTORLINK_NOTIFY_KINDS, the DirectorLink
+	     notification agreement) are added by the driver at every start, always in this order.
+	     DIRECTORLINK_NOTIFY, the agreement's command, comes with C4:SendToDevice from DirectorLink and is
+	     not a command of the Programming tab. -->
+
+	<events>
+		<event><id>1</id><name>Notification Shown</name><description>When NAME has shown a pop-up on the TV; LAST_NOTIFICATION is its text</description></event>
+		<event><id>2</id><name>Notification Failed</name><description>When a pop-up could not be shown on NAME's TV (off, not reachable, the app not running, or no answer); LAST_NOTIFICATION is its text</description></event>
+	</events>
+
+	<config>
+		<script file="driver.lua" jit="1"/>
+		<documentation file="www/documentation.html"/>
+
+		<properties>
+			<property><name>Status</name><type>STRING</type><readonly>true</readonly><default>Starting...</default></property>
+			<property><name>TV</name><type>STRING</type><readonly>true</readonly><default></default></property>
+			<property>
+				<name>TV App</name><type>LIST</type><readonly>false</readonly><default>Notifications for Android TV</default>
+				<items><item>Notifications for Android TV</item><item>PiPup</item></items>
+				<tooltip>The app on the TV that shows the pop-ups. Notifications for Android TV: from Google Play (Notifications for Fire TV from the Amazon Appstore). PiPup: installed from a computer with its script.</tooltip>
+			</property>
+			<property>
+				<name>TV IP Address</name><type>STRING</type><readonly>false</readonly><default></default>
+				<tooltip>The TV's IP address, for example 192.168.1.50, or pick it in TVs Found. Give the TV a fixed address in the router.</tooltip>
+			</property>
+			<property>
+				<name>TVs Found</name><type>LIST</type><readonly>false</readonly><default>-</default>
+				<items><item>-</item></items>
+				<tooltip>The TVs and casting devices that answered Find TVs (they answer while they are on), the ones where the app answers first. Pick one to fill in TV IP Address.</tooltip>
+			</property>
+			<property>
+				<name>Doorbell</name><type>LIST</type><readonly>false</readonly><default>On</default>
+				<items><item>On</item><item>Off</item></items>
+				<tooltip>Show DirectorLink's doorbell rings on this TV.</tooltip>
+			</property>
+			<property>
+				<name>Camera Alerts</name><type>LIST</type><readonly>false</readonly><default>Off</default>
+				<items><item>On</item><item>Off</item></items>
+				<tooltip>Show DirectorLink's camera alerts (a person, a vehicle...) on this TV.</tooltip>
+			</property>
+			<property>
+				<name>Doors and Gates</name><type>LIST</type><readonly>false</readonly><default>Off</default>
+				<items><item>On</item><item>Off</item></items>
+				<tooltip>Show DirectorLink's notifications that a door or gate opened on this TV.</tooltip>
+			</property>
+			<property>
+				<name>Alarm</name><type>LIST</type><readonly>false</readonly><default>On</default>
+				<items><item>On</item><item>Off</item></items>
+				<tooltip>Show DirectorLink's alarm notifications on this TV.</tooltip>
+			</property>
+			<property>
+				<name>Other</name><type>LIST</type><readonly>false</readonly><default>Off</default>
+				<items><item>On</item><item>Off</item></items>
+				<tooltip>Show DirectorLink's other notifications on this TV.</tooltip>
+			</property>
+			<property>
+				<name>Quiet Hours</name><type>STRING</type><readonly>false</readonly><default></default>
+				<tooltip>From-to, in the controller's local time, for example 22:00-07:00: no pop-ups on this TV then. Empty: none.</tooltip>
+			</property>
+			<property>
+				<name>Pictures</name><type>LIST</type><readonly>false</readonly><default>On</default>
+				<items><item>On</item><item>Off</item></items>
+				<tooltip>On: a notification's picture (who is at the door or the gate) shows in the pop-up. The TV fetches it from the address the notification gives.</tooltip>
+			</property>
+			<property>
+				<name>Position</name><type>LIST</type><readonly>false</readonly><default>Top Right</default>
+				<items><item>Top Right</item><item>Top Left</item><item>Bottom Right</item><item>Bottom Left</item><item>Center</item></items>
+				<tooltip>Where on the screen the pop-up shows.</tooltip>
+			</property>
+			<property>
+				<name>Seconds On Screen</name><type>RANGED_INTEGER</type><readonly>false</readonly><default>15</default>
+				<minimum>3</minimum><maximum>120</maximum>
+				<tooltip>How long the pop-up stays on the screen.</tooltip>
+			</property>
+			<property>
+				<name>Log Level</name><type>LIST</type><readonly>false</readonly><default>Info</default>
+				<items><item>Off</item><item>Errors</item><item>Warnings</item><item>Info</item><item>Debug</item><item>Trace</item></items>
+				<tooltip>Info writes one line for every pop-up. Debug and Trace show every check and every request to the TV.</tooltip>
+			</property>
+		</properties>
+
+		<actions>
+			<action><name>Find TVs</name><command>FindTVs</command></action>
+			<action><name>Test Notification</name><command>TestNotification</command></action>
+			<action><name>Print Diagnostics</name><command>PrintDiagnostics</command></action>
+		</actions>
+
+		<commands>
+			<command>
+				<name>SHOW_NOTIFICATION</name><description>Show a pop-up on NAME's TV: PARAM1, PARAM2</description>
+				<params>
+					<param><name>Title</name><type>STRING</type></param>
+					<param><name>Message</name><type>STRING</type></param>
+					<param><name>Picture URL</name><type>STRING</type></param>
+				</params>
+			</command>
+		</commands>
+	</config>
+
+	<!-- A self-contained device (combo driver, its own proxy), as DirectorLink itself and Snap One's
+	     sample drivers are: no tile in the Control4 apps. -->
+	<combo>true</combo>
+	<proxies>
+		<proxy>DirectorLink-Android-TV</proxy>
+	</proxies>
+</devicedata>

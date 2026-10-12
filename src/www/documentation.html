@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DirectorLink · Android TV Notifications</title>
+<style>
+  :root { --cyan:#28d2ff; --cyan-ink:#0a7fa3; --ink:#1f2328; --muted:#5d6670; --bg:#ffffff; --panel:#f4f6f8; --line:#dde3e8; --hero:#23272b; --hero2:#3a3f44; }
+  @media (prefers-color-scheme: dark) { :root { --ink:#e8ecef; --muted:#9aa4ad; --bg:#15181b; --panel:#1e2226; --line:#30363c; --cyan-ink:#28d2ff; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.55 "Segoe UI", -apple-system, Arial, sans-serif; }
+  a { color:var(--cyan-ink); }
+  .hero { background:linear-gradient(135deg, var(--hero), var(--hero2)); color:#fff; padding:22px 24px; display:flex; gap:18px; align-items:center; }
+  .hero img { width:84px; height:84px; flex:none; }
+  .hero h1 { margin:0; font-size:22px; font-weight:600; }
+  .hero .tag { color:var(--cyan); font-weight:600; margin:2px 0 6px; }
+  .hero p { margin:0; color:#c9d1d8; }
+  .hero p.url { color:#fff; margin:0 0 6px; font-weight:600; }
+  .badge { display:inline-block; background:var(--cyan); color:#06222b; font-size:11px; font-weight:700; padding:1px 8px; border-radius:10px; margin-left:8px; vertical-align:3px; }
+  main { max-width:920px; padding:8px 24px 32px; }
+  h2 { font-size:17px; margin:28px 0 10px; padding-left:10px; border-left:4px solid var(--cyan); }
+  h3 { font-size:14px; margin:18px 0 6px; }
+  .muted { color:var(--muted); }
+  .links { margin:14px 0 0; padding:10px 14px; background:var(--panel); border:1px solid var(--line); border-radius:8px; }
+  table { border-collapse:collapse; width:100%; margin:8px 0; }
+  th, td { border-bottom:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top; }
+  th { background:var(--panel); font-weight:600; }
+  code { background:var(--panel); border:1px solid var(--line); padding:0 4px; border-radius:4px; font-size:12.5px; }
+  .steps { counter-reset:step; list-style:none; padding:0; margin:8px 0; }
+  .steps li { counter-increment:step; position:relative; padding:8px 10px 8px 44px; margin:6px 0; background:var(--panel); border:1px solid var(--line); border-radius:8px; }
+  .steps li::before { content:counter(step); position:absolute; left:10px; top:8px; width:24px; height:24px; border-radius:50%; background:var(--cyan); color:#06222b; font-weight:700; text-align:center; line-height:24px; font-size:12.5px; }
+  .note { border-left:3px solid var(--cyan); background:var(--panel); padding:8px 12px; border-radius:0 8px 8px 0; }
+</style>
+</head>
+<body>
+<div class="hero">
+  <img src="icons/tv_300.png" alt="">
+  <div>
+    <h1>DirectorLink &middot; Android TV Notifications <span class="badge">BETA</span></h1>
+    <div class="tag">Free, open-source Control4 driver: notifications as a pop-up with a picture on TVs with Google TV, Android TV or Fire TV. Part of DirectorLink Drivers.</div>
+    <p class="url">https://directorlink.io/drivers/android-tv</p>
+    <p>A doorbell ring with who is at the door, a camera alert, a door or gate opened, the alarm: on the TV, over whatever is on. On the home network only, with a free app on the TV.</p>
+  </div>
+</div>
+<main>
+<div class="links">Free. No subscription, no license key, no account with us. Downloads, updates and help: see the address above (online with 1.0.0). DirectorLink is an independent project, not affiliated with Control4 or Snap One. Not affiliated with or endorsed by Google, Amazon or the makers of the TV apps it works with. Android TV, Google TV and Fire TV are trademarks of their owners.</div>
+
+<h2>Which TVs</h2>
+<p>In the TV's <i>Settings &rarr; About</i>: <b>Google TV</b>, <b>Android TV</b> or <b>Fire OS 7 / 8</b> works (Sony Bravia, TCL, Hisense Google TV, Sharp, Xiaomi, Philips 2021-2025, Panasonic Google TV and Fire TV models, Fire TV TVs and sticks, Google TV Streamer, Chromecast with Google TV, Nvidia Shield...). Samsung, LG (use DirectorLink &middot; LG TV Notifications), Vizio, Roku TVs, VIDAA and Titan OS TVs, and the newest Fire TV sticks with Vega OS do not.</p>
+
+<h2>The app on the TV</h2>
+<table>
+  <tr><th></th><th>Notifications for Android TV (default)</th><th>PiPup</th></tr>
+  <tr><td>Install</td><td>Google Play on the TV (Fire TV: <i>Notifications for Fire TV</i>, Amazon Appstore). Open it once, allow <i>Notification access</i> and <i>Display over other apps</i>, restart the TV.</td><td>From a computer: the TV in developer mode (USB / ADB debugging), then PiPup's <code>install.ps1</code> or <code>install.sh</code> with the TV's IP (github.com/mhoogenbosch/PiPup).</td></tr>
+  <tr><td>TVs</td><td>Android 11 and newer; Fire OS 7 / 8</td><td>Android 6 and newer; Fire TV</td></tr>
+  <tr><td>Screen off?</td><td>Cannot tell</td><td>Tells the driver: a screen that is off gets nothing</td></tr>
+</table>
+
+<h2>Setup</h2>
+<ol class="steps">
+  <li>Set up the app on the TV (above), give the TV a <b>fixed IP address</b> in the router, and turn it on.</li>
+  <li>Choose the <b>TV App</b>.</li>
+  <li>Pick the TV in <b>TVs Found</b> (the driver looks for TVs when it is added, the ones where the app answers first; <i>Find TVs</i> looks again), or type its address in <b>TV IP Address</b>. <b>Status</b> says <i>Ready</i>.</li>
+  <li>Run <b>Test Notification</b>.</li>
+  <li>Choose what this TV shows (<b>Doorbell</b>, <b>Camera Alerts</b>, <b>Doors and Gates</b>, <b>Alarm</b>, <b>Other</b>), <b>Quiet Hours</b>, and the look (<b>Position</b>, <b>Seconds On Screen</b>, <b>Pictures</b>).</li>
+</ol>
+
+<h2>When a pop-up shows</h2>
+<p><b>The TV has 3 seconds to take the connection</b>; off or not reachable, the pop-up is dropped with one line in the log, and <i>Notification Failed</i> fires. With PiPup, a screen that is off gets nothing. The driver never turns the TV on. <b>One pop-up every 5 seconds at most</b> on each TV, a doorbell or the alarm first. <b>Only the kinds switched on, nothing during Quiet Hours</b> (Show Notification ignores the kinds; Test Notification always shows). The text is shown as sent, Hebrew included.</p>
+<p><b>The picture</b> is fetched by the TV from the address the notification gives: DirectorLink's <code>PICTURE</code> (on the controller; <code>127.0.0.1</code> becomes the controller's address), or Show Notification's <b>Picture URL</b>, for example a camera's snapshot address that opens without a login prompt. The TV must reach it on the home network. A login in an address is never written to the log.</p>
+<p><b>Checks:</b> every minute while the app answers; when it does not, after 5 s, 30 s, 2 min, then every 5 min.</p>
+
+<h2>Status</h2>
+<table>
+  <tr><th>Status</th><th>Means</th></tr>
+  <tr><td>Ready</td><td>The app answers: pop-ups show.</td></tr>
+  <tr><td>Off</td><td>The TV does not answer (it answered at this address before), or, with PiPup, its screen is off.</td></tr>
+  <tr><td>Not reachable</td><td>Nothing has answered at this address yet: check the address and that the TV is on.</td></tr>
+  <tr><td>The TV answers, but ... does not</td><td>The app is not running: install it and open it once (PiPup: run its script again).</td></tr>
+  <tr><td>PiPup may not show pop-ups</td><td>PiPup lacks <i>Display over other apps</i>: run its script again.</td></tr>
+</table>
+
+<h2>Properties</h2>
+<table>
+  <tr><th>Property</th><th>Description</th></tr>
+  <tr><td>Status &middot; TV</td><td>What the driver is doing (above); the app, and with PiPup the TV's name, model and Android version.</td></tr>
+  <tr><td>TV App</td><td>Notifications for Android TV (default) or PiPup.</td></tr>
+  <tr><td>TV IP Address &middot; TVs Found</td><td>The TV's IP address; the TVs that answered Find TVs (pick one to fill in the address).</td></tr>
+  <tr><td>Doorbell &middot; Camera Alerts &middot; Doors and Gates &middot; Alarm &middot; Other</td><td>On or Off: which of DirectorLink's notifications this TV shows. Doorbell and Alarm are On by default.</td></tr>
+  <tr><td>Quiet Hours</td><td>From-to in the controller's local time, for example <code>22:00-07:00</code>: no pop-ups then. Empty: none.</td></tr>
+  <tr><td>Pictures &middot; Position &middot; Seconds On Screen</td><td>The picture in the pop-up (On); where it shows (Top Right); how long (15 s, 3 to 120).</td></tr>
+  <tr><td>Log Level</td><td>Info: one line for every pop-up. Debug and Trace: every check and request.</td></tr>
+</table>
+<p><b>Actions:</b> Find TVs &middot; Test Notification &middot; Print Diagnostics (the TV and its app, the checks, the look, the kinds and Quiet Hours, the last 10 notifications and what happened to each).</p>
+
+<h2>Programming reference</h2>
+<p><b>Command:</b> <code>SHOW_NOTIFICATION</code> (Title, Message, Picture URL): a pop-up, whatever the kinds, not during Quiet Hours. <b>Events:</b> Notification Shown &middot; Notification Failed (off, not reachable, the app not running, or no answer). <b>Variable:</b> <code>LAST_NOTIFICATION</code> (STRING), the text of the last pop-up shown or failed, set before the event fires.</p>
+
+<h2>DirectorLink</h2>
+<p>DirectorLink 1.13 and newer sends its notifications to this driver as soon as both are in the project (DirectorLink is not required). The driver follows the <b>DirectorLink notification agreement, version 1</b>, the same as DirectorLink &middot; LG TV Notifications:</p>
+<table>
+  <tr><th>What</th><th>The driver</th></tr>
+  <tr><td>Marker</td><td>String variable <code>DIRECTORLINK_NOTIFY</code> = <code>1</code>, set at every start, after the driver's other variables (never reordering them).</td></tr>
+  <tr><td>Kinds</td><td>String variable <code>DIRECTORLINK_NOTIFY_KINDS</code>: the kinds switched on, comma-separated, from <code>doorbell</code>, <code>camera</code>, <code>door</code>, <code>alarm</code>, <code>other</code>; updated whenever a property changes.</td></tr>
+  <tr><td>A notification</td><td>The command <code>DIRECTORLINK_NOTIFY</code> by <code>C4:SendToDevice</code>, taken in ExecuteCommand and ReceivedFromProxy, with <code>VERSION</code> (<code>1</code>), <code>ID</code> (unique; a repeat within 10 minutes is ignored), <code>KIND</code>, <code>TITLE</code> and <code>MESSAGE</code> (final text in the home's language, shown exactly as given), <code>PICTURE</code> (optional, an http address on the controller with a JPEG for 60 seconds; the TV fetches it, so it must answer on the controller's home-network address too).</td></tr>
+  <tr><td>Rules</td><td>Never block. Only the kinds switched on, nothing during Quiet Hours. At most one pop-up every 5 seconds per TV, a doorbell or the alarm first. Set <code>LAST_NOTIFICATION</code>, then fire Notification Shown or Notification Failed.</td></tr>
+</table>
+<p class="muted">The variables come in this order: <code>LAST_NOTIFICATION</code>, <code>DIRECTORLINK_NOTIFY</code>, <code>DIRECTORLINK_NOTIFY_KINDS</code>.</p>
+
+<h2>Change log</h2>
+<table>
+  <tr><th>Version</th><th>Changes</th></tr>
+  <tr><td>1.0.0-beta.1</td><td>First release (beta).</td></tr>
+</table>
+
+<h2>License</h2>
+<p class="muted">Installing third-party drivers or changing a Control4 project can affect compatibility, support, warranty or recovery. Keep a backup of your project. The license is included as <code>www/LICENSE.txt</code> and <code>www/NOTICE.txt</code>.</p>
+<p>Apache License 2.0. Copyright 2026 DirectorLink. DirectorLink is an independent project, not affiliated with Control4 or Snap One. Not affiliated with or endorsed by Google, Amazon or the makers of the TV apps it works with. Android TV, Google TV and Fire TV are trademarks of their owners. Product names are trademarks of their owners. DirectorLink's own source code: https://github.directorlink.io</p>
+</main>
+</body>
+</html>
