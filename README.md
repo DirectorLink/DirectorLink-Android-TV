@@ -228,7 +228,7 @@ cd tests && python test_static.py && python test_xml.py && python test_protocol.
 python tools/build.py            # -> dist/DirectorLink-Android-TV.c4z, dist/SHA256SUMS.txt
 ```
 
-`test_static.py` needs `luac` 5.1 (`apt install lua5.1`). `tests/live_test.py` runs the same driver code against a real TV from a computer on the TV's network (not part of CI): `python tests/live_test.py find`, or `python tests/live_test.py <TV IP> [picture URL] [token=...]`.
+`test_static.py` needs `luac` 5.1 (`apt install lua5.1`). `tests/live_test.py` runs the same driver code against a real TV from a computer on the TV's network (not part of CI): `python tests/live_test.py find`, `python tests/live_test.py <TV IP> [picture URL] [token=...]`, or `python tests/live_test.py alltvs <TV IP> [picture URL]` (Send To All TVs with one TV: two copies of the driver on it).
 
 | Path | Contents |
 |---|---|
