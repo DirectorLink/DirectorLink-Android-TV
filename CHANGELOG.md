@@ -2,6 +2,16 @@
 
 All notable changes to DirectorLink · Android TV Notifications for Control4. Versions follow the `VERSION` file; the driver version Composer compares is in brackets.
 
+## 1.0.0-beta.3 (1000003) - 2026-10-13
+
+One driver for several TVs. Beta.2 was confirmed from a Control4 controller on a Sony XR-77A95L with PiPup 0.3.4: Find TVs, Test Notification and a pop-up with a picture (fetched by the controller, sent inline).
+
+- **TV IP Addresses** (a list, `ip` or `ip:port`, up to 16) replaces TV IP Address; **TVs** (each TV, its state and PiPup's version) replaces TV. From beta.1 or beta.2 the driver moves the TV's address into the list by itself.
+- Every notification goes to every TV of the list at once; the picture is fetched once. *Notification Shown* when at least one TV showed it, *Notification Failed* when none did; the log says on which TVs, and why not on the others.
+- Each TV is checked on its own (every minute; 5 s, 30 s, 2 min, then every 5 min). **Status** says *Ready: 2 TVs*, or which TVs are not ready.
+- Picking a TV in **TVs Found** adds it to the list (once).
+- Tested from a computer on the network with the driver's own code: a list of two (the Sony with PiPup, a box without): shown on the Sony, the other named with the reason.
+
 ## 1.0.0-beta.2 (1000002) - 2026-10-13
 
 The driver works with one TV app, **PiPup — TV Notifications** by Alexander Savin (Google Play: `nyc.savin.pipup`), as PiPup documents its API, and carries the picture inside the pop-up. Tested on a Sony XR-77A95L (Google TV) with PiPup 0.3.4, from a computer running the driver's own code.

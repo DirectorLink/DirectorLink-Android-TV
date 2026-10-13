@@ -67,7 +67,7 @@ check(not [n for n in family if "directorlink" in (n or "").lower()], "no brand 
 
 # What the installer sees, exactly
 defaults = {p.findtext("name"): p.findtext("default") for p in props}
-check(names == ["Status", "TV", "TV IP Address", "TVs Found", "PiPup Port", "PiPup Token", "Doorbell", "Camera Alerts", "Doors and Gates",
+check(names == ["Status", "TVs", "TV IP Addresses", "TVs Found", "PiPup Port", "PiPup Token", "Doorbell", "Camera Alerts", "Doors and Gates",
                 "Alarm", "Other", "Quiet Hours", "Pictures", "Position", "Seconds On Screen", "Log Level"], f"the properties ({names})")
 check(defaults["PiPup Port"] == "7979" and defaults["Pictures"] == "On" and defaults["Position"] == "Top Right"
       and defaults["Seconds On Screen"] == "15", "PiPup on 7979; pictures on; top right; 15 s")
@@ -78,8 +78,8 @@ ranged = [p for p in props if p.findtext("type") == "RANGED_INTEGER"]
 check(all(int(p.findtext("minimum")) <= int(p.findtext("default")) <= int(p.findtext("maximum")) for p in ranged), "every RANGED_INTEGER default is in range")
 check([defaults[k] for k in ("Doorbell", "Camera Alerts", "Doors and Gates", "Alarm", "Other")] == ["On", "Off", "Off", "On", "Off"],
       "Doorbell and Alarm on by default, the others off")
-check(defaults["Quiet Hours"] in (None, "") and defaults["TV IP Address"] in (None, ""), "Quiet Hours and the address empty by default")
-check(all(p.findtext("readonly") == "true" for p in props if p.findtext("name") in ("Status", "TV")), "Status and TV are read-only")
+check(defaults["Quiet Hours"] in (None, "") and defaults["TV IP Addresses"] in (None, ""), "Quiet Hours and the addresses empty by default")
+check(all(p.findtext("readonly") == "true" for p in props if p.findtext("name") in ("Status", "TVs")), "Status and TVs are read-only")
 check(not [p for p in props if (p.findtext("type") or "") == "PASSWORD"], "no PASSWORD property type (Composer rejects it)")
 actions = [a.findtext("command") for a in root.findall("config/actions/action")]
 check(actions == ["FindTVs", "TestNotification", "PrintDiagnostics"], f"actions ({actions})")

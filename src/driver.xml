@@ -14,7 +14,7 @@
 	<controlmethod>ip</controlmethod>
 	<driver>DriverWorks</driver>
 	<minimum_os_version>3.3.0</minimum_os_version>
-	<!-- One driver per TV. Never change or remove event ids, command or property names in later
+	<!-- One driver for every TV in its list. Never change or remove event ids, command or property names in later
 	     versions: Control4 projects that already use the driver depend on them. The variables
 	     (LAST_NOTIFICATION, then DIRECTORLINK_NOTIFY and DIRECTORLINK_NOTIFY_KINDS, the DirectorLink
 	     notification agreement) are added by the driver at every start, always in this order.
@@ -22,8 +22,8 @@
 	     not a command of the Programming tab. -->
 
 	<events>
-		<event><id>1</id><name>Notification Shown</name><description>When NAME has shown a pop-up on the TV; LAST_NOTIFICATION is its text</description></event>
-		<event><id>2</id><name>Notification Failed</name><description>When a pop-up could not be shown on NAME's TV (off, not reachable, PiPup not running or refusing, or no answer); LAST_NOTIFICATION is its text</description></event>
+		<event><id>1</id><name>Notification Shown</name><description>When NAME has shown a pop-up on at least one of its TVs; LAST_NOTIFICATION is its text</description></event>
+		<event><id>2</id><name>Notification Failed</name><description>When a pop-up could not be shown on any of NAME's TVs (off, not reachable, PiPup not running or refusing, or no answer); LAST_NOTIFICATION is its text</description></event>
 	</events>
 
 	<config>
@@ -32,53 +32,53 @@
 
 		<properties>
 			<property><name>Status</name><type>STRING</type><readonly>true</readonly><default>Starting...</default></property>
-			<property><name>TV</name><type>STRING</type><readonly>true</readonly><default></default></property>
+			<property><name>TVs</name><type>STRING</type><readonly>true</readonly><default></default></property>
 			<property>
-				<name>TV IP Address</name><type>STRING</type><readonly>false</readonly><default></default>
-				<tooltip>The TV's IP address, for example 192.168.1.50, or pick it in TVs Found. Give the TV a fixed address in the router.</tooltip>
+				<name>TV IP Addresses</name><type>STRING</type><readonly>false</readonly><default></default>
+				<tooltip>The TVs' IP addresses, separated by commas, for example 192.168.1.50, 192.168.1.51 (or pick them in TVs Found). Every notification shows on all of them. A TV whose PiPup uses another port: 192.168.1.52:8080. Give each TV a fixed address in the router.</tooltip>
 			</property>
 			<property>
 				<name>TVs Found</name><type>LIST</type><readonly>false</readonly><default>-</default>
 				<items><item>-</item></items>
-				<tooltip>The TVs and casting devices that answered Find TVs (they answer while they are on), the ones where PiPup answers first. Pick one to fill in TV IP Address.</tooltip>
+				<tooltip>The TVs and casting devices that answered Find TVs (they answer while they are on), the ones where PiPup answers first. Picking one adds it to TV IP Addresses.</tooltip>
 			</property>
 			<property>
 				<name>PiPup Port</name><type>RANGED_INTEGER</type><readonly>false</readonly><default>7979</default>
 				<minimum>1</minimum><maximum>65535</maximum>
-				<tooltip>PiPup's port on the TV: 7979 unless it was changed in PiPup's settings.</tooltip>
+				<tooltip>PiPup's port on the TVs: 7979 unless it was changed in PiPup's settings (for one TV only: write ip:port in TV IP Addresses).</tooltip>
 			</property>
 			<property>
 				<name>PiPup Token</name><type>STRING</type><password>true</password><readonly>false</readonly><default></default>
-				<tooltip>Only if a token is set in PiPup's settings on the TV: the same token here. It is never written to a log.</tooltip>
+				<tooltip>Only if a token is set in PiPup's settings on the TVs: the same token here (the same on every TV of this driver). It is never written to a log.</tooltip>
 			</property>
 			<property>
 				<name>Doorbell</name><type>LIST</type><readonly>false</readonly><default>On</default>
 				<items><item>On</item><item>Off</item></items>
-				<tooltip>Show DirectorLink's doorbell rings on this TV.</tooltip>
+				<tooltip>Show DirectorLink's doorbell rings on these TVs.</tooltip>
 			</property>
 			<property>
 				<name>Camera Alerts</name><type>LIST</type><readonly>false</readonly><default>Off</default>
 				<items><item>On</item><item>Off</item></items>
-				<tooltip>Show DirectorLink's camera alerts (a person, a vehicle...) on this TV.</tooltip>
+				<tooltip>Show DirectorLink's camera alerts (a person, a vehicle...) on these TVs.</tooltip>
 			</property>
 			<property>
 				<name>Doors and Gates</name><type>LIST</type><readonly>false</readonly><default>Off</default>
 				<items><item>On</item><item>Off</item></items>
-				<tooltip>Show DirectorLink's notifications that a door or gate opened on this TV.</tooltip>
+				<tooltip>Show DirectorLink's notifications that a door or gate opened on these TVs.</tooltip>
 			</property>
 			<property>
 				<name>Alarm</name><type>LIST</type><readonly>false</readonly><default>On</default>
 				<items><item>On</item><item>Off</item></items>
-				<tooltip>Show DirectorLink's alarm notifications on this TV.</tooltip>
+				<tooltip>Show DirectorLink's alarm notifications on these TVs.</tooltip>
 			</property>
 			<property>
 				<name>Other</name><type>LIST</type><readonly>false</readonly><default>Off</default>
 				<items><item>On</item><item>Off</item></items>
-				<tooltip>Show DirectorLink's other notifications on this TV.</tooltip>
+				<tooltip>Show DirectorLink's other notifications on these TVs.</tooltip>
 			</property>
 			<property>
 				<name>Quiet Hours</name><type>STRING</type><readonly>false</readonly><default></default>
-				<tooltip>From-to, in the controller's local time, for example 22:00-07:00: no pop-ups on this TV then. Empty: none.</tooltip>
+				<tooltip>From-to, in the controller's local time, for example 22:00-07:00: no pop-ups on these TVs then. Empty: none.</tooltip>
 			</property>
 			<property>
 				<name>Pictures</name><type>LIST</type><readonly>false</readonly><default>On</default>
@@ -110,7 +110,7 @@
 
 		<commands>
 			<command>
-				<name>SHOW_NOTIFICATION</name><description>Show a pop-up on NAME's TV: PARAM1, PARAM2</description>
+				<name>SHOW_NOTIFICATION</name><description>Show a pop-up on NAME's TVs: PARAM1, PARAM2</description>
 				<params>
 					<param><name>Title</name><type>STRING</type></param>
 					<param><name>Message</name><type>STRING</type></param>

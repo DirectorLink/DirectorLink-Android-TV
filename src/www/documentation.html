@@ -37,7 +37,7 @@
   <img src="icons/tv_300.png" alt="">
   <div>
     <h1>DirectorLink &middot; Android TV Notifications <span class="badge">BETA</span></h1>
-    <div class="tag">Free, open-source Control4 driver: notifications as a pop-up with a picture on TVs with Google TV or Android TV, with PiPup. Part of DirectorLink Drivers.</div>
+    <div class="tag">Free, open-source Control4 driver: notifications as a pop-up with a picture on every TV with Google TV or Android TV, with PiPup. Part of DirectorLink Drivers.</div>
     <p class="url">https://directorlink.io/drivers/android-tv</p>
     <p>A doorbell ring with who is at the door, a camera alert, a door or gate opened, the alarm: on the TV, over whatever is on. On the home network only, with the free PiPup app on the TV.</p>
   </div>
@@ -59,21 +59,23 @@
 
 <h2>Setup</h2>
 <ol class="steps">
-  <li>Set up PiPup on the TV (above), give the TV a <b>fixed IP address</b> in the router, and turn it on.</li>
-  <li>Pick the TV in <b>TVs Found</b> (the driver looks for TVs when it is added; <i>PiPup answers</i> marks the TVs with PiPup; <i>Find TVs</i> looks again), or type its address in <b>TV IP Address</b>. <b>Status</b> says <i>Ready</i>.</li>
+  <li>Set up PiPup on each TV (above), give each TV a <b>fixed IP address</b> in the router, and turn them on.</li>
+  <li>Pick each TV in <b>TVs Found</b>: each pick adds it to <b>TV IP Addresses</b> (the driver looks for TVs when it is added; <i>PiPup answers</i> marks the TVs with PiPup; <i>Find TVs</i> looks again). Or type the addresses, separated by commas. <b>Status</b> says <i>Ready</i> (several TVs: <i>Ready: 2 TVs</i>).</li>
   <li>Run <b>Test Notification</b>.</li>
   <li>Choose what this TV shows (<b>Doorbell</b>, <b>Camera Alerts</b>, <b>Doors and Gates</b>, <b>Alarm</b>, <b>Other</b>), <b>Quiet Hours</b>, and the look (<b>Position</b>, <b>Seconds On Screen</b>, <b>Pictures</b>).</li>
 </ol>
 
 <h2>When a pop-up shows</h2>
-<p><b>Only when the screen is on:</b> just before each pop-up the driver asks PiPup (<code>/status</code>). <b>The TV has 3 seconds to answer</b>; off or not reachable, the pop-up is dropped with one line in the log, and <i>Notification Failed</i> fires. The driver never turns the TV on. <b>One pop-up every 5 seconds at most</b> on each TV, a doorbell or the alarm first; a new pop-up replaces the one still showing. <b>Only the kinds switched on, nothing during Quiet Hours</b> (Show Notification ignores the kinds; Test Notification always shows). The text is shown as sent, Hebrew included.</p>
-<p><b>The picture:</b> the driver fetches DirectorLink's <code>PICTURE</code> (on the controller; <code>127.0.0.1</code> works) or Show Notification's <b>Picture URL</b> (for example a camera's snapshot; a login written in the address, <code>http://user:password@...</code>, is sent as a login) and sends it <b>inside</b> the pop-up, so the TV never has to reach it. Not fetched within 2 seconds, or larger than 1.5 MB: the address goes instead, for PiPup to fetch. A token or a login is never written to the log.</p>
-<p><b>Checks:</b> every minute while PiPup answers; when it does not, after 5 s, 30 s, 2 min, then every 5 min.</p>
+<p><b>On every TV of the list at once</b>: <i>Notification Shown</i> when at least one TV showed it, <i>Notification Failed</i> when none did; the log says on which TVs. <b>Only when the screen is on:</b> just before each pop-up the driver asks each TV's PiPup (<code>/status</code>). <b>Each TV has 3 seconds to answer</b>; off or not reachable, it is left out. The driver never turns a TV on. <b>One pop-up every 5 seconds at most</b> on each TV, a doorbell or the alarm first; a new pop-up replaces the one still showing. <b>Only the kinds switched on, nothing during Quiet Hours</b> (Show Notification ignores the kinds; Test Notification always shows). The text is shown as sent, Hebrew included.</p>
+<p><b>The picture:</b> the driver fetches, once for all the TVs, DirectorLink's <code>PICTURE</code> (on the controller; <code>127.0.0.1</code> works) or Show Notification's <b>Picture URL</b> (for example a camera's snapshot; a login written in the address, <code>http://user:password@...</code>, is sent as a login) and sends it <b>inside</b> the pop-up, so the TV never has to reach it. Not fetched within 2 seconds, or larger than 1.5 MB: the address goes instead, for PiPup to fetch. A token or a login is never written to the log.</p>
+<p><b>Checks:</b> each TV every minute while its PiPup answers; when it does not, after 5 s, 30 s, 2 min, then every 5 min.</p>
+<p class="note">TVs that need other settings (Quiet Hours for a child's room) get a second copy of the driver.</p>
 
 <h2>Status</h2>
 <table>
   <tr><th>Status</th><th>Means</th></tr>
   <tr><td>Ready</td><td>PiPup answers and the screen is on: pop-ups show.</td></tr>
+  <tr><td>Ready: 2 TVs &middot; 1 of 2 TVs ready - ...</td><td>Several TVs: all ready, or which are not and why.</td></tr>
   <tr><td>Off</td><td>The TV does not answer (it answered at this address before), or its screen is off.</td></tr>
   <tr><td>Not reachable</td><td>Nothing has answered at this address yet: check the address and that the TV is on.</td></tr>
   <tr><td>The TV answers, but PiPup does not</td><td>Open PiPup on the TV once; check <b>PiPup Port</b>.</td></tr>
@@ -84,9 +86,9 @@
 <h2>Properties</h2>
 <table>
   <tr><th>Property</th><th>Description</th></tr>
-  <tr><td>Status &middot; TV</td><td>What the driver is doing (above); the TV's name and PiPup's version.</td></tr>
-  <tr><td>TV IP Address &middot; TVs Found</td><td>The TV's IP address; the TVs that answered Find TVs (pick one to fill in the address).</td></tr>
-  <tr><td>PiPup Port &middot; PiPup Token</td><td>7979 unless changed in PiPup; the token, only when one is set in PiPup (never logged).</td></tr>
+  <tr><td>Status &middot; TVs</td><td>What the driver is doing (above); each TV, its state and PiPup's version.</td></tr>
+  <tr><td>TV IP Addresses &middot; TVs Found</td><td>The TVs' IP addresses, separated by commas (<code>ip:port</code> for another PiPup port), up to 16; the TVs that answered Find TVs (picking one adds it).</td></tr>
+  <tr><td>PiPup Port &middot; PiPup Token</td><td>7979 unless changed in PiPup; the token, only when one is set in PiPup, the same on every TV (never logged).</td></tr>
   <tr><td>Doorbell &middot; Camera Alerts &middot; Doors and Gates &middot; Alarm &middot; Other</td><td>On or Off: which of DirectorLink's notifications this TV shows. Doorbell and Alarm are On by default.</td></tr>
   <tr><td>Quiet Hours</td><td>From-to in the controller's local time, for example <code>22:00-07:00</code>: no pop-ups then. Empty: none.</td></tr>
   <tr><td>Pictures &middot; Position &middot; Seconds On Screen</td><td>The picture in the pop-up (On); where it shows (Top Right); how long (15 s, 3 to 120).</td></tr>
@@ -95,7 +97,7 @@
 <p><b>Actions:</b> Find TVs &middot; Test Notification &middot; Print Diagnostics (the TV and PiPup, the checks, the look, the kinds and Quiet Hours, the last 10 notifications and what happened to each; never the token).</p>
 
 <h2>Programming reference</h2>
-<p><b>Command:</b> <code>SHOW_NOTIFICATION</code> (Title, Message, Picture URL): a pop-up, whatever the kinds, not during Quiet Hours. <b>Events:</b> Notification Shown &middot; Notification Failed (off, not reachable, PiPup not running or refusing, or no answer). <b>Variable:</b> <code>LAST_NOTIFICATION</code> (STRING), the text of the last pop-up shown or failed, set before the event fires.</p>
+<p><b>Command:</b> <code>SHOW_NOTIFICATION</code> (Title, Message, Picture URL): a pop-up, whatever the kinds, not during Quiet Hours. <b>Events:</b> Notification Shown (on at least one TV) &middot; Notification Failed (on none: off, not reachable, PiPup not running or refusing, or no answer). One Show Notification reaches every TV of the list. <b>Variable:</b> <code>LAST_NOTIFICATION</code> (STRING), the text of the last pop-up shown or failed, set before the event fires.</p>
 
 <h2>DirectorLink</h2>
 <p>DirectorLink 1.13 and newer sends its notifications to this driver as soon as both are in the project (DirectorLink is not required). The driver follows the <b>DirectorLink notification agreement, version 1</b>, the same as DirectorLink &middot; LG TV Notifications:</p>
@@ -111,6 +113,7 @@
 <h2>Change log</h2>
 <table>
   <tr><th>Version</th><th>Changes</th></tr>
+  <tr><td>1.0.0-beta.3</td><td>One driver for several TVs: TV IP Addresses (a list) and TVs; every notification on every TV at once; each TV checked on its own. The TV's address moves to the list by itself.</td></tr>
   <tr><td>1.0.0-beta.2</td><td>PiPup &mdash; TV Notifications (Alexander Savin) only, as it documents its API: /status, /notify, PiPup Port and PiPup Token. The picture fetched by the driver and sent inside the pop-up. The TV App property is gone.</td></tr>
   <tr><td>1.0.0-beta.1</td><td>First release (beta).</td></tr>
 </table>
