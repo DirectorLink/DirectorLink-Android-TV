@@ -12,7 +12,7 @@ DirectorLink is an independent project, not affiliated with Control4 or Snap One
 
 **Download:** [releases](../../releases) · **Help and updates:** [directorlink.io/drivers/android-tv](https://directorlink.io/drivers/android-tv) (online with 1.0.0)
 
-> **Beta.** Tested on a Sony XR-77A95L (Google TV) with PiPup 0.3.4: the driver's own code, run from a computer on the TV's network, showed pop-ups in English and Hebrew, with pictures inline and by address. Not yet confirmed from a Control4 controller: see [Trying the beta](#trying-the-beta).
+> **Beta.** Tested on a Sony XR-77A95L (Google TV) with PiPup 0.3.4. From a Control4 controller (1.0.0-beta.2): Find TVs found the TV (*PiPup answers*), and Test Notification showed on it. From a computer on the TV's network, running the driver's own code: pop-ups in English and Hebrew, with pictures inline and by address. Still to confirm from a controller: a pop-up with a picture. See [Trying the beta](#trying-the-beta).
 
 ## What you get
 
