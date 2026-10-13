@@ -13,7 +13,7 @@ import json
 import base64
 
 from fake_apps import JPEG, FakePictures, FakePiPup, attach_ssdp
-from harness import Driver, check, finish
+from harness import Driver, check, finish, utf8
 
 IP = "192.168.50.50"
 CTRL = "192.168.50.10"
@@ -22,7 +22,7 @@ HE_TITLE, HE_MESSAGE = "דלת הכניסה", "מישהו מצלצל בדלת"
 
 def tv(props=None, persist=None, fake=None):
     """A driver set up for the TV at IP with PiPup: (driver, fake PiPup)."""
-    p = {"TV IP Addresses": IP}
+    p = {"TV IP Address": IP}
     p.update(props or {})
     d = Driver(props=p, persist=persist)
     fake = fake or FakePiPup(IP)
@@ -52,13 +52,13 @@ d.start()
 check(d.var_order() == ["LAST_NOTIFICATION", "DIRECTORLINK_NOTIFY", "DIRECTORLINK_NOTIFY_KINDS"],
       f"variables in their fixed order: LAST_NOTIFICATION, then the agreement's ({d.var_order()})")
 check(d.var("DIRECTORLINK_NOTIFY") == "1" and d.var("DIRECTORLINK_NOTIFY_KINDS") == "doorbell,alarm", "DIRECTORLINK_NOTIFY = 1; kinds doorbell,alarm by default")
-check(d.prop("Status").startswith("Enter the TVs' IP addresses"), f"no address: Status says to enter them ({d.prop('Status')})")
+check(d.prop("Status").startswith("Enter the TV's IP address"), f"no address: Status says to enter it ({d.prop('Status')})")
 d.set_prop("Camera Alerts", "On")
 check(d.var("DIRECTORLINK_NOTIFY_KINDS") == "doorbell,camera,alarm", "a kind switched on: DIRECTORLINK_NOTIFY_KINDS follows")
 d, app = tv()
 d.command("SHOW_NOTIFICATION", {"Title": "Hello", "Message": "World"})
 d.pump(1000)
-d2 = Driver(props={"TV IP Addresses": IP, "Alarm": "Off"}, persist=d.persisted())
+d2 = Driver(props={"TV IP Address": IP, "Alarm": "Off"}, persist=d.persisted())
 FakePiPup(IP).attach(d2)
 d2.start()
 check("DIRECTORLINK_NOTIFY" in list(d2.g.VAR_LOG.values()) and d2.var("DIRECTORLINK_NOTIFY_KINDS") == "doorbell", "a restart writes the agreement's variables again")
@@ -67,7 +67,7 @@ check(d2.var("LAST_NOTIFICATION") == "Hello: World" and d2.var_order()[0] == "LA
 # ============================================================ PiPup: checks and pop-ups
 d, app = tv()
 check(d.prop("Status") == "Ready", f"PiPup answers /status: Ready ({d.prop('Status')})")
-check(d.prop("TVs") == f"SONY XR-77A95L ({IP}): Ready, PiPup 0.3.4", f"the TVs property from PiPup's /status ({d.prop('TVs')})")
+check(d.prop("TV") == "SONY XR-77A95L · PiPup 0.3.4", f"the TV property from PiPup's /status ({d.prop('TV')})")
 check(paths(app)[:1] == ["/status"] and "/state" not in paths(app), "checked with GET /status on port 7979 (PiPup has no /state)")
 d.clear()
 n_status = paths(app).count("/status")
@@ -195,7 +195,7 @@ check(d.events() == ["Notification Shown"] and req[2].get("Authorization") == "B
 check(d.prop("Status") == "Ready", "Ready")
 d.action("PrintDiagnostics")
 check(not [l for l in d.logs() if "S3cretTok3n" in l], "the token is never in a log line (Trace, Print Diagnostics, the property change)")
-check(any("token set (never shown)" in l for l in d.logs()), "Print Diagnostics says a token is set")
+check(any("one is set, never shown" in l for l in d.logs()), "Print Diagnostics says a token is set")
 
 d, app = tv()
 app.blocked = True
@@ -247,7 +247,7 @@ notify(d, nid="o-4")
 d.pump(6000)
 check(d.events() == ["Notification Shown"], "a PiPup without /status: sent all the same")
 app.has_status = True
-d = Driver(props={"TV IP Addresses": "192.168.50.99"})
+d = Driver(props={"TV IP Address": "192.168.50.99"})
 d.start()
 d.pump(10000)
 check(d.prop("Status") == "Not reachable", f"no TV ever at the address: Not reachable ({d.prop('Status')})")
@@ -276,89 +276,58 @@ check(d2.prop("Status") == "Ready", "back: Ready by the next check")
 # A restart: a TV that answered there before is Off, not Not reachable
 d, app = tv()
 persist = d.persisted()
-d2 = Driver(props={"TV IP Addresses": IP}, persist=persist)
+d2 = Driver(props={"TV IP Address": IP}, persist=persist)
 gone = FakePiPup(IP)
 gone.network = False
 gone.attach(d2)
 d2.start()
 d2.pump(10000)
-check(d2.prop("Status") == "Off" and d2.prop("TVs").startswith("SONY XR-77A95L"), f"after a restart, a TV that answered here before: Off, its name kept ({d2.prop('Status')}, {d2.prop('TVs')})")
+check(d2.prop("Status") == "Off" and d2.prop("TV") == "SONY XR-77A95L · PiPup 0.3.4", f"after a restart, a TV that answered here before: Off, its name kept ({d2.prop('Status')})")
 table_persist = {k: (json.loads(v[5:]) if isinstance(v, str) and v.startswith("json:") else v) for k, v in persist.items()}
-d3 = Driver(props={"TV IP Addresses": IP}, persist=table_persist)
+d3 = Driver(props={"TV IP Address": IP}, persist=table_persist)
 FakePiPup(IP).attach(d3)
 d3.start()
 d3.pump(3000)
 check(d3.prop("Status") == "Ready", "saved values Director returns as a table are read too")
 
-# ============================================================ several TVs in one driver
-IP2 = "192.168.50.51"
-d = Driver(props={"TV IP Addresses": f"{IP}, {IP2}"})
-sony = FakePiPup(IP, name="Living Room TV").attach(d)
-bed = FakePiPup(IP2, name="Bedroom TV").attach(d)
-pics = FakePictures({"/notify/ring.jpg": JPEG})
-d.serve("127.0.0.1:47200", pics)
-d.start()
-d.pump(3000)
-check(d.prop("Status") == "Ready: 2 TVs", f"two TVs answering: Status Ready: 2 TVs ({d.prop('Status')})")
-check(d.prop("TVs") == f"Living Room TV ({IP}): Ready, PiPup 0.3.4 · Bedroom TV ({IP2}): Ready, PiPup 0.3.4", f"TVs lists each ({d.prop('TVs')})")
-d.clear()
-notify(d, nid="m-1", title=HE_TITLE, message=HE_MESSAGE, PICTURE="http://127.0.0.1:47200/notify/ring.jpg")
-d.pump(1000)
-check(len(sony.shown) == 1 and sony.shown == bed.shown and sony.shown[0]["title"] == HE_TITLE, "one notification: the same pop-up on both TVs")
-check(pics.requests == ["/notify/ring.jpg"] and sony.shown[0]["media"]["image"]["uri"].startswith("data:image/jpeg;base64,"),
-      "the picture fetched once, inline on both")
-check(d.events() == ["Notification Shown"] and any("Shown on all 2 TVs (Living Room TV, Bedroom TV)" in l for l in d.logs()),
-      "Notification Shown once; the log says on which TVs")
-bed.network = False
-d.pump(5000)
-d.clear()
-notify(d, nid="m-2")
-d.pump(3500)
-check(len(sony.shown) == 2 and len(bed.shown) == 1 and d.events() == ["Notification Shown"], "one TV off: shown on the other, Notification Shown")
-check(any("Shown on 1 of 2 TVs (Living Room TV; not on Bedroom TV: the TV did not answer within 3 s (off))" in l for l in d.logs()),
-      "the log says which TV left it out, and why")
-check(d.prop("Status") == "1 of 2 TVs ready - Bedroom TV: Off", f"Status names the TV that is off ({d.prop('Status')})")
-sony.screen_on = False
-d.pump(5000)
-d.clear()
-notify(d, nid="m-3")
-d.pump(3500)
-check(d.events() == ["Notification Failed"] and any("Not shown (Living Room TV: its screen is off; Bedroom TV: the TV did not answer" in l for l in d.logs()),
-      "no TV showed it: Notification Failed, the log says why for each")
-sony.screen_on = True
-bed.network = True
-d.pump(5 * 60000)
-check(d.prop("Status") == "Ready: 2 TVs", "both back: Ready by their checks")
-# Each TV is checked on its own: one gone does not slow the other's checks
-bed.network = False
-n_sony = len(sony.requests)
-d.pump(5 * 60000)
-check(len(sony.requests) - n_sony == 5, "the TV that answers is still checked every minute while the other is gone")
-bed.network = True
-d.pump(6 * 60000)
-# Removing a TV: no more requests to it
-d.set_prop("TV IP Addresses", IP, pump_ms=2000)
-n_bed = len(bed.requests)
-d.pump(5000)
-notify(d, nid="m-4")
-d.pump(5 * 60000)
-check(len(bed.requests) == n_bed and d.prop("Status") == "Ready" and len(sony.shown) == 3, "a TV taken out of the list: no more requests to it")
-# ip:port, and an entry that is not an address
-d = Driver(props={"TV IP Addresses": f"{IP}, {IP2}:8080, not-an-ip!"})
-FakePiPup(IP).attach(d)
-other = type("P8080", (FakePiPup,), {"port": 8080})(IP2, name="Den TV")
-other.attach(d)
-d.start()
-d.pump(3000)
-check(other.requests and d.prop("Status").startswith("Ready: 2 TVs - not an address: not-an-ip!"),
-      f"ip:port reaches PiPup on its own port; an entry that is not an address is named in Status ({d.prop('Status')})")
+# ============================================================ Send To: All TVs (one copy of the driver per TV)
+def sent_to(d):
+    return [(e.id, e.cmd, {k: utf8(v) for k, v in dict(e.params).items()}) for e in d.g.SENT_TO_DEVICE.values()]
 
-# An update from 1.0.0-beta.2 (one TV in "TV IP Address"): its address moves to TV IP Addresses
-d = Driver(persist={"DL_TV": 'json:{"host":"%s","seen":"%s","info":{"name":"SONY XR-77A95L","version":"0.3.4"}}' % (IP, IP)})
+
+d, app = tv()
+d.run('DEVICES_BY_FILE["DirectorLink-Android-TV.c4z"] = { [900] = "Family Room TV", [905] = "Bedroom TV", [906] = "Kitchen TV" }; '
+      'DEVICE_NAMES[905] = "Bedroom TV"; DEVICE_NAMES[906] = "Kitchen TV"')
+d.clear()
+d.command("SHOW_NOTIFICATION", {"Title": HE_TITLE, "Message": "Opened", "Picture URL": "http://192.168.50.60/snap.jpg", "Send To": "All TVs"})
+d.pump(3000)
+fwd = sent_to(d)
+check([f[0] for f in fwd] == [905, 906] and all(f[1] == "SHOW_NOTIFICATION" for f in fwd),
+      f"Send To All TVs: the command goes to every other copy of the driver, not back to this one ({[f[0] for f in fwd]})")
+check(all(f[2] == {"Title": HE_TITLE, "Message": "Opened", "Picture URL": "http://192.168.50.60/snap.jpg", "Send To": "This TV"} for f in fwd),
+      "with the same title, message and picture, and Send To This TV (so no copy sends it on again)")
+check(app.shown[-1]["title"] == HE_TITLE and d.events() == ["Notification Shown"], "and this copy shows it on its own TV")
+check(any("Show Notification to All TVs: also sent to Bedroom TV, Kitchen TV" in l for l in d.logs()), "the log names the other TVs")
+d.clear()
+d.run("SENT_TO_DEVICE = {}")
+d.command("SHOW_NOTIFICATION", {"Title": "Only", "Message": "here", "Send To": "This TV"})
+d.pump(6000)
+d.command("SHOW_NOTIFICATION", {"Title": "No", "Message": "choice"})
+d.pump(6000)
+check(sent_to(d) == [] and app.shown[-1]["title"] == "No", "Send To This TV, or no choice: this TV only")
+d.run('DEVICES_BY_FILE["DirectorLink-Android-TV.c4z"] = { 900, 907 }; SENT_TO_DEVICE = {}')
+d.command("SHOW_NOTIFICATION", {"Title": "List", "Message": "form", "Send To": "All TVs"})
+d.pump(6000)
+check([f[0] for f in sent_to(d)] == [907], "Director's list of device ids read either way ({id = name} or {id, ...})")
+
+# From 1.0.0-beta.3 (a list of TVs in one driver): its first TV is this driver's TV
+d = Driver(persist={"DL_TV": 'json:{"tvs":[{"key":"%s:7979","seen":true,"name":"SONY XR-77A95L","version":"0.3.4"},'
+                              '{"key":"192.168.50.51:7979","seen":true}]}' % IP})
 FakePiPup(IP).attach(d)
 d.start()
 d.pump(3000)
-check(d.prop("TV IP Addresses") == IP and d.prop("Status") == "Ready", f"from beta.2: the TV's address is moved to TV IP Addresses ({d.prop('TV IP Addresses')})")
+check(d.prop("TV IP Address") == IP and d.prop("Status") == "Ready", f"from beta.3: the list's first TV becomes TV IP Address ({d.prop('TV IP Address')})")
+check(any("add a copy of DirectorLink · Android TV Notifications for 192.168.50.51" in l for l in d.logs()), "the log says which TVs need a copy of their own")
 
 # ============================================================ kinds, IDs, Quiet Hours
 d, app = tv()
@@ -425,12 +394,6 @@ check(items == ["-", "SONY XR-77A95L (192.168.50.50) - PiPup answers", "TapCast-
       f"no address: Find TVs runs; the TVs with PiPup first (GET /ping), each by its own name ({items})")
 check(len(ssdp.searches) == 3, "the M-SEARCH is sent 3 times")
 d.set_prop("TVs Found", "SONY XR-77A95L (192.168.50.50) - PiPup answers", pump_ms=2000)
-check(d.prop("TV IP Addresses") == "192.168.50.50" and d.prop("Status") == "Ready", "picking a TV adds it to TV IP Addresses and checks it")
-d.set_prop("TVs Found", "SONY XR-77A95L (192.168.50.50) - PiPup answers", pump_ms=2000)
-check(d.prop("TV IP Addresses") == "192.168.50.50", "picking it again does not add it twice")
-FakePiPup("192.168.50.52", name="Kitchen TV").attach(d)
-d.set_prop("TVs Found", "Xiaomi MiTV-AFKR0 (192.168.50.52)", pump_ms=2000)
-check(d.prop("TV IP Addresses") == "192.168.50.50, 192.168.50.52" and d.prop("Status") == "Ready: 2 TVs",
-      f"picking another adds it to the list ({d.prop('TV IP Addresses')}; {d.prop('Status')})")
+check(d.prop("TV IP Address") == "192.168.50.50" and d.prop("Status") == "Ready", "picking a TV fills TV IP Address and checks it")
 
 finish()

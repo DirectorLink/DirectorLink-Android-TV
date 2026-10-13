@@ -2,6 +2,14 @@
 
 All notable changes to DirectorLink · Android TV Notifications for Control4. Versions follow the `VERSION` file; the driver version Composer compares is in brackets.
 
+## 1.0.0 (1000099) - 2026-10-13
+
+First full release: the 1.0.0-beta.2 driver, one copy per TV, with **Send To** added to Show Notification. Beta.2 was confirmed from a Control4 controller on a Sony XR-77A95L (Google TV) with PiPup 0.3.4: Find TVs, Test Notification, and Show Notification with a picture (fetched by the controller, sent inside the pop-up).
+
+- **One copy of the driver per TV** again (beta.3's list of TVs in one driver is withdrawn): each TV keeps its own kinds, Quiet Hours, look and Status.
+- **Show Notification** has a new parameter, **Send To**: *This TV* (the default) or *All TVs*. *All TVs* shows it on this copy's TV and sends it to every other copy of the driver in the project (`C4:SendToDevice`, with *This TV*, so it goes no further); each shows it on its own TV.
+- **From beta.3:** the list's first TV becomes **TV IP Address**; the log names the others, which need a copy of their own. From beta.2: nothing changes. From beta.1: install PiPup on the TV.
+
 ## 1.0.0-beta.3 (1000003) - 2026-10-13
 
 One driver for several TVs. Beta.2 was confirmed from a Control4 controller on a Sony XR-77A95L with PiPup 0.3.4: Find TVs, Test Notification and a pop-up with a picture (fetched by the controller, sent inline).

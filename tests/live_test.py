@@ -1,7 +1,7 @@
 """Live test: the real driver code against a real TV, from a computer on the same network.
 
     python tests/live_test.py find                               # Find TVs: the driver's own search, over real UDP
-    python tests/live_test.py <TV IP>[,<TV IP>...] [picture URL] [token=...]   # check PiPup, Print Diagnostics, pop-ups
+    python tests/live_test.py <TV IP> [picture URL] [token=...]   # check PiPup, Print Diagnostics, pop-ups
 
 Runs the assembled driver.lua in the harness (Lua 5.1 and the fake Director) with its
 requests made for real: HTTP to PiPup on the TV (and to the casting devices' descriptions),
@@ -130,7 +130,7 @@ def find():
 
 
 def show(ip, picture, token):
-    live = Live({"TV IP Addresses": ip, "PiPup Token": token or "", "Log Level": "Trace"})
+    live = Live({"TV IP Address": ip, "PiPup Token": token or "", "Log Level": "Trace"})
     d = live.d
     print(f"\n== Checking PiPup at {ip}")
     live.run(8, until=lambda: d.prop("Status") not in ("Starting...", "Checking..."))

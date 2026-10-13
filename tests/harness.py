@@ -51,7 +51,10 @@ function C4:UpdateProperty(n, v) Properties[n] = v end
 function C4:UpdatePropertyList(n, items) PROP_LISTS[n] = items end
 function C4:SetPropertyAttribs(n, v) ATTRIBS[n] = v end
 function C4:GetDeviceID() return DEVICE_ID end
-function C4:GetDeviceDisplayName(id) return DISPLAY_NAME end
+function C4:GetDeviceDisplayName(id) if id == DEVICE_ID then return DISPLAY_NAME end return DEVICE_NAMES[id] end
+DEVICES_BY_FILE = {}; DEVICE_NAMES = {}; SENT_TO_DEVICE = {}
+function C4:GetDevicesByC4iName(name) return DEVICES_BY_FILE[name] or {} end
+function C4:SendToDevice(id, cmd, params, allowEmpty, log) SENT_TO_DEVICE[#SENT_TO_DEVICE + 1] = { id = id, cmd = cmd, params = params } end
 function C4:GetControllerNetworkAddress() return CONTROLLER_IP end
 function C4:GetVersionInfo() return { version = OS_VERSION } end
 function C4:GetTime() return NOW_MS end

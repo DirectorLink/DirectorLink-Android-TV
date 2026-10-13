@@ -186,11 +186,9 @@ local function Finish(item, ok, why)
 	KillTimer("PICTURE_" .. item.seq)
 	SetVar("LAST_NOTIFICATION", item.text, true)
 	if ok then
-		-- why: where it was shown ("the TV", "all 2 TVs (...)", "1 of 2 TVs (...; not on ...)")
-		local where = why or "the TV"
 		gNotify.counts.shown = gNotify.counts.shown + 1
-		Remember(item, "shown", where ~= "the TV" and where or nil)
-		LogInfo("Shown on %s: %s%s", where, Describe(item), item.picture and " with its picture" or "")
+		Remember(item, "shown")
+		LogInfo("Shown on the TV: %s%s", Describe(item), item.picture and " with its picture" or "")
 		FireEvent("Notification Shown")
 	else
 		gNotify.counts.failed = gNotify.counts.failed + 1

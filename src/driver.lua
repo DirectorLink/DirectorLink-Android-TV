@@ -3,8 +3,9 @@
     https://directorlink.io/drivers/android-tv
 
     Shows notifications as a pop-up, with a picture (who is at the door or
-    the gate), on every TV in its list that runs Google TV or Android TV, on
-    the home network only. Each TV runs PiPup - TV Notifications by
+    the gate), on a TV that runs Google TV or Android TV, on the home network
+    only. One driver per TV; Show Notification can send to all of them
+    (Send To: All TVs). The TV runs PiPup - TV Notifications by
     Alexander Savin (Google Play: nyc.savin.pipup), a free app that takes
     pop-ups over the network (tvapp.lua).
 
@@ -13,15 +14,13 @@
         Notification command, and the Test Notification action
         (notify.lua): only the kinds switched on, nothing during Quiet Hours,
         at most one pop-up every 5 seconds, a doorbell or the alarm first.
-      - Every TV in TV IP Addresses at once; the notification is shown when at
-        least one TV showed it.
       - The picture: the notification's PICTURE (or Show Notification's
         Picture URL), fetched by the driver and carried inline, when Pictures
         is On.
-      - A TV that is off, or does not answer within 3 seconds, is left out
-        with one log line. The driver never turns a TV on.
+      - Off, or no answer within 3 seconds: the pop-up is dropped with one log
+        line. The driver never turns the TV on.
       - Finding TVs: an SSDP search for casting devices (ssdp.lua), each asked
-        whether PiPup answers; picking one adds it to the list.
+        whether PiPup answers; or the TV's IP address typed in.
 
     DirectorLink notification agreement v1: variables DIRECTORLINK_NOTIFY = "1"
     and DIRECTORLINK_NOTIFY_KINDS (the kinds switched on, from doorbell,
@@ -40,37 +39,51 @@ LOG_PREFIX = "Android TV"
 AGREEMENT_VERSION = 1
 TEST_TEXT = { title = "Control4", message = "Test: pop-ups from Control4 work on this TV." }
 FIND_PROBE_S = 2
+DRIVER_FILE = "DirectorLink-Android-TV.c4z"   -- the other copies of this driver, one per TV
 
-gState = { savedVars = {}, quietOk = true, foundAt = nil, found = {}, saved = {}, badEntries = {} }
+gState = { savedVars = {}, quietOk = true, foundAt = nil, found = {}, savedHost = nil }
 
 --[[=============================================================================
     Saved state
-    DL_TV: for each TV of the list ("host:port"), whether PiPup answered there,
-    and its name and PiPup's version. DL_VARS: LAST_NOTIFICATION. The token
+    DL_TV: the address the rest applies to, whether PiPup answered there,
+    and what PiPup said about the TV. DL_VARS: LAST_NOTIFICATION. The token
     stays in its property.
 ===============================================================================]]
 function SaveState()
-	local tvs = {}
-	for _, tv in ipairs(TvList()) do
-		tvs[#tvs + 1] = JsonObject({ key = tv.key, seen = tv.seenHere, name = tv.info.name, version = tv.info.version })
-	end
-	StoreSet("DL_TV", JsonObject({ tvs = tvs }))
+	StoreSet("DL_TV", JsonObject({
+		host = gTv.host, seen = gTv.seenHere and gTv.host or nil,
+		info = JsonObject({ name = gTv.info.name, version = gTv.info.version }),
+	}))
 end
 
 local function LoadState()
 	local s = StoreGet("DL_TV")
 	if type(s) ~= "table" then return end
-	-- 1.0.0-beta.1 and beta.2 had one TV ("TV IP Address"): its address moves to TV IP Addresses
-	local oldHost = JsonField(s, "host")
-	if type(oldHost) == "string" and ValidAddress(oldHost) then gState.oldHost = oldHost end
-	for _, t in ipairs(JsonField(s, "tvs") or {}) do
-		local key = type(t) == "table" and JsonField(t, "key")
-		if type(key) == "string" then
-			local name, version = JsonField(t, "name"), JsonField(t, "version")
-			gState.saved[key] = {
-				seen = JsonField(t, "seen") == true,
-				info = { name = type(name) == "string" and name or nil, version = type(version) == "string" and version or nil },
-			}
+	local host = JsonField(s, "host")
+	-- 1.0.0-beta.3 kept a list of TVs: its first is this driver's TV (the others need a copy each)
+	local list = JsonField(s, "tvs")
+	if type(host) ~= "string" and type(list) == "table" and #list > 0 then
+		gState.beta3 = {}
+		for _, t in ipairs(list) do
+			local key = type(t) == "table" and JsonField(t, "key")
+			local h = type(key) == "string" and string.match(key, "^(.-):%d+$")
+			if h and h ~= "" then gState.beta3[#gState.beta3 + 1] = h end
+		end
+		local first = list[1]
+		host = gState.beta3[1]
+		if host then
+			s = JsonObject({ host = host, seen = JsonField(first, "seen") == true and host or nil,
+				info = JsonObject({ name = JsonField(first, "name"), version = JsonField(first, "version") }) })
+		end
+	end
+	gState.savedHost = type(host) == "string" and host or ""
+	gState.seenHost = JsonField(s, "seen")
+	local info = JsonField(s, "info")
+	if type(info) == "table" then
+		gState.savedInfo = {}
+		for _, k in ipairs({ "name", "version" }) do
+			local v = JsonField(info, k)
+			if type(v) == "string" then gState.savedInfo[k] = v end
 		end
 	end
 end
@@ -99,59 +112,36 @@ local function PortFromProperty()
 	return PIPUP_PORT
 end
 
--- One TV's state, as Status says it when it is the only one
-function TvStatusText(tv)
-	local s = tv.state
-	if s == "ready" then return "Ready" end
-	if s == "off" then return "Off" end
-	if s == "token" then
-		return gTvToken ~= "" and "PiPup did not take the token: check PiPup Token" or "PiPup asks for a token: enter the one from PiPup's settings in PiPup Token"
-	end
-	if s == "blocked" then return "PiPup refuses this controller: allow " .. (ControllerAddress() or "its address") .. " in PiPup's settings (IP allowlist)" end
-	if s == "noapp" then return "The TV answers, but PiPup does not: open PiPup on the TV (or check the port)" end
-	if s == "unreachable" then return tv.seenHere and "Off" or "Not reachable" end
-	return "Checking..."
-end
-
--- The same, short, for a list of TVs
-local function TvShortText(tv)
-	local s = tv.state
-	if s == "token" then return "needs the token" end
-	if s == "blocked" then return "PiPup refuses this controller" end
-	if s == "noapp" then return "PiPup not answering" end
-	return TvStatusText(tv)
-end
-
 function StatusText()
-	local tvs = TvList()
 	local text
-	if #tvs == 0 then
-		text = "Enter the TVs' IP addresses, or pick them in TVs Found"
-	elseif #tvs == 1 then
-		text = TvStatusText(tvs[1])
+	local s = gTv.state
+	if not ValidAddress(gTv.host) then
+		text = "Enter the TV's IP address, or pick it in TVs Found"
+	elseif s == "ready" then
+		text = "Ready"
+	elseif s == "off" then
+		text = "Off"
+	elseif s == "token" then
+		text = gTv.token ~= "" and "PiPup did not take the token: check PiPup Token" or "PiPup asks for a token: enter the one from PiPup's settings in PiPup Token"
+	elseif s == "blocked" then
+		text = "PiPup refuses this controller: allow " .. (ControllerAddress() or "its address") .. " in PiPup's settings (IP allowlist)"
+	elseif s == "noapp" then
+		text = "The TV answers, but PiPup does not: open PiPup on the TV (or check PiPup Port)"
+	elseif s == "unreachable" then
+		text = gTv.seenHere and "Off" or "Not reachable"
 	else
-		local ready, others = 0, {}
-		for _, tv in ipairs(tvs) do
-			if tv.state == "ready" then ready = ready + 1 else others[#others + 1] = TvName(tv) .. ": " .. TvShortText(tv) end
-		end
-		if ready == #tvs then
-			text = "Ready: " .. #tvs .. " TVs"
-		else
-			text = ready .. " of " .. #tvs .. " TVs ready - " .. table.concat(others, ", ")
-		end
+		text = "Checking..."
 	end
-	if #gState.badEntries > 0 then text = text .. " - not an address: " .. table.concat(gState.badEntries, ", ") end
 	if not gState.quietOk then text = text .. " - Quiet Hours not understood: write it as 22:00-07:00" end
 	return text
 end
 
--- "SONY XR-77A95L (192.168.1.127): Ready · PiPup 0.3.4" for each TV
-function TvsText()
+-- "SONY XR-77A95L · PiPup 0.3.4", as PiPup's /status says it
+function TvText()
 	local parts = {}
-	for _, tv in ipairs(TvList()) do
-		parts[#parts + 1] = TvName(tv) .. (TvName(tv) ~= tv.host and (" (" .. tv.host .. ")") or "") .. ": " .. TvShortText(tv)
-			.. (tv.info.version and (", PiPup " .. tv.info.version) or "")
-	end
+	local i = gTv.info
+	if i.name and i.name ~= "" then parts[#parts + 1] = i.name end
+	parts[#parts + 1] = "PiPup" .. (i.version and (" " .. i.version) or "")
 	return table.concat(parts, " · ")
 end
 
@@ -159,16 +149,15 @@ function UpdateStatus()
 	local status = StatusText()
 	if status ~= Properties["Status"] then LogDebug("Status: %s", status) end
 	UpdateProperty("Status", status)
-	UpdateProperty("TVs", TvsText())
+	UpdateProperty("TV", ValidAddress(gTv.host) and TvText() or "")
 end
 
--- From tvapp.lua: a TV's state or what PiPup said about it changed
+-- From tvapp.lua: the state of the TV or what it said about itself changed
 function TvChanged()
-	local key = {}
-	for _, tv in ipairs(TvList()) do key[#key + 1] = tv.key .. "|" .. tostring(tv.seenHere) .. "|" .. tostring(tv.info.name) .. "|" .. tostring(tv.info.version) end
-	key = table.concat(key, ";")
-	if key ~= gState.savedKey then
-		gState.savedKey = key
+	local seen = gTv.seenHere and gTv.host or nil
+	local key = tostring(gTv.info.name) .. "|" .. tostring(gTv.info.version)
+	if seen ~= gState.seenHost or key ~= gState.savedInfoKey then
+		gState.seenHost, gState.savedInfoKey = seen, key
 		SaveState()
 	end
 	UpdateStatus()
@@ -196,27 +185,29 @@ local function CheckQuietHours()
 end
 
 --[[=============================================================================
-    The TVs' addresses, PiPup's port and token
+    The TV's address, PiPup's port and token
 ===============================================================================]]
-local function ApplyTvs(reason)
-	local list, bad = ParseTvList(Properties["TV IP Addresses"], PortFromProperty())
-	gState.badEntries = bad
-	if #bad > 0 then LogWarn("TV IP Addresses: not an address: %s", table.concat(bad, ", ")) end
-	local before = {}
-	for _, tv in ipairs(TvList()) do before[tv.key] = true end
-	local added = {}
-	for _, e in ipairs(list) do
-		if not before[e.key] then added[#added + 1] = e.host .. (e.port ~= PIPUP_PORT and (":" .. e.port) or "") end
+local function ApplyTv(reason)
+	local host = trim(Properties["TV IP Address"])
+	if host ~= "" and not ValidAddress(host) then
+		LogWarn("TV IP Address '%s' is not an address", host)
+		host = ""
 	end
-	if #added > 0 then LogInfo("TV%s %s%s", #added > 1 and "s" or "", table.concat(added, ", "), reason and (" (" .. reason .. ")") or "") end
-	TvConfigure(list, trim(Properties["PiPup Token"]), gState.saved)
+	local port, token = PortFromProperty(), trim(Properties["PiPup Token"])
+	if host == gTv.host and port == gTv.port and token == gTv.token and gTv.state ~= "idle" then return end
+	NotifyFlush("the TV's address changed")
+	local sameTv = host == gState.savedHost
+	gState.savedHost = host
+	if host ~= "" then
+		LogInfo("TV %s, PiPup on port %d%s%s", host, port, token ~= "" and ", with a token" or "", reason and (" (" .. reason .. ")") or "")
+	end
+	TvConfigure(host, port, token, sameTv)
 	SaveState()
 	UpdateStatus()
 end
 
 --[[=============================================================================
-    Finding TVs: the casting devices on the network, each asked whether PiPup answers;
-    picking one adds it to TV IP Addresses
+    Finding TVs: the casting devices on the network, each asked whether PiPup answers
 ===============================================================================]]
 local function FoundItem(dev)
 	local name = dev.name or trim((dev.maker or "") .. " " .. (dev.model or ""))
@@ -263,11 +254,11 @@ local function FindTVs()
 			for _, dev in ipairs(found) do items[#items + 1] = FoundItem(dev) end
 			UpdatePropertyList("TVs Found", items, "-")
 			if #found == 0 then
-				LogInfo("Find TVs: no TV answered. A TV answers while it is on; or type its IP address in TV IP Addresses")
+				LogInfo("Find TVs: no TV answered. A TV answers while it is on; or type its IP address in TV IP Address")
 			else
 				local names = {}
 				for i = 2, #items do names[#names + 1] = items[i] end
-				LogInfo("Find TVs: %s. Pick a TV in TVs Found to add it", table.concat(names, ", "))
+				LogInfo("Find TVs: %s. Pick the TV in TVs Found", table.concat(names, ", "))
 			end
 		end
 		if left == 0 then return list() end
@@ -280,21 +271,14 @@ local function FindTVs()
 	end)
 end
 
--- A TV picked in TVs Found is added to TV IP Addresses (once)
 local function PickFound()
 	local v = Properties["TVs Found"] or "-"
 	local ip = string.match(v, "%((%d+%.%d+%.%d+%.%d+)%)")
 	if not ip then return end
-	local list = ParseTvList(Properties["TV IP Addresses"], PortFromProperty())
-	for _, e in ipairs(list) do
-		if e.host == ip then
-			LogInfo("%s is already in TV IP Addresses", ip)
-			return
-		end
+	if ip ~= trim(Properties["TV IP Address"]) then
+		UpdateProperty("TV IP Address", ip)
+		ApplyTv("picked in TVs Found")
 	end
-	local current = trim(Properties["TV IP Addresses"])
-	UpdateProperty("TV IP Addresses", current == "" and ip or (current .. ", " .. ip))
-	ApplyTvs("picked in TVs Found")
 end
 
 --[[=============================================================================
@@ -336,22 +320,55 @@ function DirectorLinkNotify(tParams, via)
 	})
 end
 
+-- The other copies of this driver in the project (one per TV): their device ids
+function OtherCopies()
+	local ok, devs = pcall(function() return C4:GetDevicesByC4iName(DRIVER_FILE) end)
+	local me, ids, seen = MyDeviceId(), {}, {}
+	if ok and type(devs) == "table" then
+		-- Director gives { [id] = name } (or a list of ids): both are read
+		for k, v in pairs(devs) do
+			local id = (type(v) == "string" and tonumber(k)) or tonumber(v) or tonumber(k)
+			if id and id ~= me and not seen[id] then
+				seen[id] = true
+				ids[#ids + 1] = id
+			end
+		end
+	end
+	table.sort(ids)
+	return ids
+end
+
+-- Show Notification: on this driver's TV, and with Send To = All TVs on every other copy's TV too
+-- (each copy shows it on its own TV, as its own Quiet Hours and look say)
 local function ShowNotification(tParams)
-	NotifyAccept({
-		source = "programming", title = Param(tParams, "Title"), message = Param(tParams, "Message"),
-		picture = Param(tParams, "Picture URL"),
-	})
+	local title, message, picture = Param(tParams, "Title"), Param(tParams, "Message"), Param(tParams, "Picture URL")
+	NotifyAccept({ source = "programming", title = title, message = message, picture = picture })
+	if string.lower(trim(Param(tParams, "Send To") or "")) ~= "all tvs" then return end
+	local ids = OtherCopies()
+	if #ids == 0 then
+		LogDebug("Show Notification to All TVs: no other copy of this driver in the project")
+		return
+	end
+	local names = {}
+	for _, id in ipairs(ids) do
+		pcall(function()
+			C4:SendToDevice(id, "SHOW_NOTIFICATION", { Title = title or "", Message = message or "", ["Picture URL"] = picture or "", ["Send To"] = "This TV" }, true, false)
+		end)
+		local okName, name = pcall(function() return C4:GetDeviceDisplayName(id) end)
+		names[#names + 1] = (okName and type(name) == "string" and name ~= "") and name or tostring(id)
+	end
+	LogInfo("Show Notification to All TVs: also sent to %s", table.concat(names, ", "))
 end
 
 --[[=============================================================================
     Actions
 ===============================================================================]]
 local function TestNotification()
-	if #TvList() == 0 then
-		LogWarn("Test Notification: enter the TVs' IP addresses first")
+	if not ValidAddress(gTv.host) then
+		LogWarn("Test Notification: enter the TV's IP address first")
 		return
 	end
-	LogInfo("Test Notification: sending a pop-up to %s", #TvList() == 1 and "the TV" or ("the " .. #TvList() .. " TVs"))
+	LogInfo("Test Notification: sending a pop-up to the TV")
 	NotifyAccept({ source = "test", title = TEST_TEXT.title, message = TEST_TEXT.message })
 end
 
@@ -365,25 +382,22 @@ local function PrintDiagnostics()
 		"Driver        : " .. DRIVER_SEMVER .. (build ~= "" and (" (" .. build .. ")") or "") .. " on Control4 OS " .. (v and v.text or "?")
 			.. ", device " .. tostring(MyDeviceId()) .. ", controller " .. tostring(ControllerAddress()),
 		"Status        : " .. tostring(Properties["Status"]),
-		"PiPup         : port " .. PortFromProperty() .. ", token " .. (gTvToken ~= "" and "set (never shown)" or "not set"),
+		"TV            : " .. (gTv.host ~= "" and (gTv.host .. ":" .. gTv.port) or "(no address)") .. " - " .. TvText(),
+		"PiPup         : " .. TvStateText() .. ", screen " .. (gTv.screenOn == nil and "?" or (gTv.screenOn and "on" or "off"))
+			.. ", token " .. (gTv.authEnabled == true and "required" or (gTv.authEnabled == false and "not required" or "?"))
+			.. (gTv.token ~= "" and " (one is set, never shown)" or "") .. ", " .. gTv.sent .. " pop-ups sent",
+		"Checks        : " .. gTv.checks .. (gTv.lastOkAt and (", last answer " .. ClockText(gTv.lastOkAt)) or ", no answer yet")
+			.. (gTv.nextCheckAt and (", next " .. ClockText(gTv.nextCheckAt)) or ""),
+		"Last error    : " .. (gTv.lastError and (gTv.lastError .. " at " .. ClockText(gTv.lastErrorAt)) or "none"),
+		"Pop-ups       : " .. tostring(Properties["Position"]) .. ", " .. tostring(Properties["Seconds On Screen"]) .. " s, pictures "
+			.. tostring(Properties["Pictures"]),
+		"Kinds on      : " .. (KindsText() ~= "" and KindsText() or "none"),
+		"Quiet Hours   : " .. (quiet ~= "" and (quiet .. (gState.quietOk and (InQuietHours() and " (now)" or " (not now)") or " (NOT UNDERSTOOD)")) or "none")
+			.. ", local time " .. os.date("%H:%M"),
+		"DirectorLink  : DIRECTORLINK_NOTIFY = " .. tostring(GetVar("DIRECTORLINK_NOTIFY")) .. ", DIRECTORLINK_NOTIFY_KINDS = " .. tostring(GetVar("DIRECTORLINK_NOTIFY_KINDS")),
+		"Notifications : " .. gNotify.counts.shown .. " shown, " .. gNotify.counts.failed .. " not shown, " .. gNotify.counts.skipped .. " skipped"
+			.. (#gNotify.queue > 0 and (", " .. #gNotify.queue .. " waiting") or "") .. (gNotify.busy and ", one on its way" or ""),
 	}
-	lines[#lines + 1] = "TVs           :" .. (#TvList() == 0 and " none" or "")
-	for _, tv in ipairs(TvList()) do
-		lines[#lines + 1] = "   " .. tv.host .. ":" .. tv.port .. " " .. TvName(tv) .. (tv.info.version and (" (PiPup " .. tv.info.version .. ")") or "")
-			.. " - " .. TvStateText(tv) .. ", screen " .. (tv.screenOn == nil and "?" or (tv.screenOn and "on" or "off"))
-			.. ", token " .. (tv.authEnabled == true and "required" or (tv.authEnabled == false and "not required" or "?"))
-			.. ", " .. tv.sent .. " pop-ups, " .. tv.checks .. " checks"
-			.. (tv.lastOkAt and (", last answer " .. ClockText(tv.lastOkAt)) or ", no answer yet")
-			.. (tv.nextCheckAt and (", next check " .. ClockText(tv.nextCheckAt)) or "")
-			.. (tv.lastError and (" - last error: " .. tv.lastError .. " at " .. ClockText(tv.lastErrorAt)) or "")
-	end
-	lines[#lines + 1] = "Pop-ups       : " .. tostring(Properties["Position"]) .. ", " .. tostring(Properties["Seconds On Screen"]) .. " s, pictures " .. tostring(Properties["Pictures"])
-	lines[#lines + 1] = "Kinds on      : " .. (KindsText() ~= "" and KindsText() or "none")
-	lines[#lines + 1] = "Quiet Hours   : " .. (quiet ~= "" and (quiet .. (gState.quietOk and (InQuietHours() and " (now)" or " (not now)") or " (NOT UNDERSTOOD)")) or "none")
-		.. ", local time " .. os.date("%H:%M")
-	lines[#lines + 1] = "DirectorLink  : DIRECTORLINK_NOTIFY = " .. tostring(GetVar("DIRECTORLINK_NOTIFY")) .. ", DIRECTORLINK_NOTIFY_KINDS = " .. tostring(GetVar("DIRECTORLINK_NOTIFY_KINDS"))
-	lines[#lines + 1] = "Notifications : " .. gNotify.counts.shown .. " shown, " .. gNotify.counts.failed .. " not shown, " .. gNotify.counts.skipped .. " skipped"
-		.. (#gNotify.queue > 0 and (", " .. #gNotify.queue .. " waiting") or "") .. (gNotify.busy and ", one on its way" or "")
 	lines[#lines + 1] = "Last ones     :" .. (#gNotify.history == 0 and " none" or "")
 	for _, h in ipairs(gNotify.history) do
 		local text = string.gsub(h.text or "", "[\r\n]+", " ")
@@ -441,17 +455,30 @@ function OnDriverLateInit(dit)
 	-- The agreement: written at every start, so they are right after a driver update too
 	SetVar("DIRECTORLINK_NOTIFY", tostring(AGREEMENT_VERSION), true)
 	SetVar("DIRECTORLINK_NOTIFY_KINDS", KindsText(), true)
+	-- From 1.0.0-beta.3 (TV IP Addresses, a list): its first TV is this driver's TV
+	if trim(Properties["TV IP Address"]) == "" and gState.beta3 and gState.beta3[1] then
+		UpdateProperty("TV IP Address", gState.beta3[1])
+		LogInfo("TV IP Address: %s, the TV of 1.0.0-beta.3", gState.beta3[1])
+		if #gState.beta3 > 1 then
+			local others = {}
+			for i = 2, #gState.beta3 do others[#others + 1] = gState.beta3[i] end
+			LogWarn("This driver shows pop-ups on one TV: add a copy of DirectorLink · Android TV Notifications for %s", table.concat(others, ", "))
+		end
+	end
+	local host = trim(Properties["TV IP Address"])
+	if host ~= "" and not ValidAddress(host) then host = "" end
+	local sameTv = host ~= "" and host == gState.savedHost and gState.seenHost == host
+	gTv.host, gTv.port, gTv.token = host, PortFromProperty(), trim(Properties["PiPup Token"])
+	RegisterSecret(gTv.token)
+	gTv.seenHere = sameTv
+	if sameTv and gState.savedInfo then gTv.info = gState.savedInfo end
+	gState.savedHost = host
 	local from = ParseQuietHours(Properties["Quiet Hours"])
 	gState.quietOk = from ~= false
-	if trim(Properties["TV IP Addresses"]) == "" and gState.oldHost then
-		LogInfo("TV IP Addresses: %s, the TV of the earlier version", gState.oldHost)
-		UpdateProperty("TV IP Addresses", gState.oldHost)
-		gState.saved[string.lower(gState.oldHost) .. ":" .. PortFromProperty()] = { seen = true, info = {} }
-	end
 	UpdatePropertyList("TVs Found", { "-" }, "-")
 	UpdateStatus()
-	if trim(Properties["TV IP Addresses"]) ~= "" then
-		SetTimer("START", 2000, function() ApplyTvs() end)
+	if ValidAddress(host) then
+		SetTimer("START", 2000, function() TvCheck() end)
 	else
 		-- No address yet: look for TVs, so TVs Found is filled when the installer opens the properties
 		SetTimer("START", 3000, FindTVs)
@@ -470,9 +497,9 @@ function OnPropertyChanged(name)
 	LogDebug("Property changed: %s = %s", name, name == "PiPup Token" and "***" or tostring(Properties[name]))
 	if name == "Log Level" then
 		ApplyLogSettings()
-	elseif name == "TV IP Addresses" or name == "PiPup Port" or name == "PiPup Token" then
+	elseif name == "TV IP Address" or name == "PiPup Port" or name == "PiPup Token" then
 		-- Applied once the installer is done typing
-		SetTimer("ADDRESS_APPLY", 1500, function() ApplyTvs() end)
+		SetTimer("ADDRESS_APPLY", 1500, function() ApplyTv() end)
 	elseif name == "TVs Found" then
 		PickFound()
 	elseif name == "Quiet Hours" then

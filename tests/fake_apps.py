@@ -20,9 +20,8 @@ class FakePiPup:
     """PiPup - TV Notifications (nyc.savin.pipup) on port 7979."""
     port = 7979
 
-    def __init__(self, ip="192.168.50.50", name="SONY XR-77A95L"):
+    def __init__(self, ip="192.168.50.50"):
         self.ip = ip
-        self.name = name
         self.running = True
         self.network = True
         self.delay_ms = 30
@@ -38,7 +37,7 @@ class FakePiPup:
         return self
 
     def status(self):
-        return {"version": "0.3.4", "id": "4613e383-04aa-3839-be1d-57ddd9a0e209", "name": self.name, "port": self.port,
+        return {"version": "0.3.4", "id": "4613e383-04aa-3839-be1d-57ddd9a0e209", "name": "SONY XR-77A95L", "port": self.port,
                 "active": False, "count": len(self.shown), "screenOn": self.screen_on, "uptimeSeconds": 517,
                 "authEnabled": self.token != ""}
 
