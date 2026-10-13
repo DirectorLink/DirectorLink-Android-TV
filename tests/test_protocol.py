@@ -1,14 +1,11 @@
 """The parts on their own (offline).   python tests/test_protocol.py
 
-JSON (UTF-8 text through and back), the request to Notifications for Android TV (a strict
-multipart/form-data body, as Home Assistant sends it), PiPup's JSON, the picture's address
-(127.0.0.1 becomes the controller's), the SSDP answers of casting devices, Quiet Hours, the
-text, and the log filter (a login in an address never in a log line).
+JSON (UTF-8 text through and back), PiPup's JSON, the picture's address (127.0.0.1 becomes the
+controller's), the SSDP answers of casting devices, Quiet Hours, and the log filter (a login in
+an address, and the token, never in a log line).
 """
-import base64
 import json
 
-from fake_apps import parse_multipart
 from harness import Driver, check, finish, lua_bytes, utf8
 
 d = Driver()
@@ -19,43 +16,25 @@ G = L.globals()
 hebrew = "שער הכניסה נפתח"
 enc = utf8(d.call("JsonEncode", d.table({"message": hebrew.encode("utf-8"), "n": 3})))
 check(json.loads(enc) == {"message": hebrew, "n": 3} and "\\u05" not in enc, f"JSON: Hebrew as UTF-8, read back by a standard parser ({enc})")
-dec = d.call("JsonDecode", '{"device":{"model":"BRAVIA","android":"12"},"screenOn":false,"permissions":{"overlay":true}}')
-check(dec.screenOn is False and dec.permissions.overlay is True and dec.device.android == "12", "JSON: PiPup's /state is read")
-
-# ---- Notifications for Android TV: the multipart body
-G.Properties["Seconds On Screen"] = "20"
-G.Properties["Position"] = "Bottom Left"
-item = d.table({"title": "דלת הכניסה".encode(), "message": "מישהו בדלת".encode(), "picture": b"http://192.168.50.10:9000/snap/1.jpg"})
-boundary = "DirectorLinkTest1"
-body = lua_bytes(d.call("NfaBody", item, boundary))
-parts = parse_multipart(f"multipart/form-data; boundary={boundary}", body)
-fields = {k: v[1].decode("utf-8") for k, v in parts.items() if k != "filename"}
-check(fields == {"msg": "מישהו בדלת", "title": "דלת הכניסה", "duration": "20", "position": "1", "bkgcolor": "#000000",
-                 "transparency": "1", "interrupt": "0", "imageurl": "http://192.168.50.10:9000/snap/1.jpg"},
-      f"Notifications for Android TV: the fields, as Home Assistant and FHEM send them ({fields})")
-icon_headers, icon = parts["filename"]
-check(icon == base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP6zwAAAgcBApocMXEAAAAASUVORK5CYII="),
-      "the icon part is Home Assistant's 1 x 1 PNG, byte for byte")
-check(icon_headers["content-disposition"] == 'form-data; name="filename"; filename="icon.png"' and icon_headers["content-type"] == "application/octet-stream",
-      "the icon is a file part named filename, application/octet-stream")
-check(all(not h.get("content-type") for k, (h, _) in parts.items() if k != "filename"), "the text fields are plain form fields")
-for pos, n in (("Top Right", "2"), ("Top Left", "3"), ("Bottom Right", "0"), ("Bottom Left", "1"), ("Center", "4")):
-    G.Properties["Position"] = pos
-    p = parse_multipart(f"multipart/form-data; boundary={boundary}", lua_bytes(d.call("NfaBody", item, boundary)))
-    check(p["position"][1] == n.encode(), f"Position {pos} is {n} for Notifications for Android TV")
-only_title = parse_multipart(f"multipart/form-data; boundary={boundary}", lua_bytes(d.call("NfaBody", d.table({"title": b"Gate", "message": b""}), boundary)))
-check(only_title["msg"][1] == b"Gate" and "title" not in only_title and "imageurl" not in only_title, "a title alone is the message; no picture, no imageurl")
+dec = d.call("JsonDecode", '{"version":"0.3.4","id":"4613e383-04aa-3839-be1d-57ddd9a0e209","name":"SONY XR-77A95L","port":7979,'
+                           '"active":false,"count":0,"screenOn":false,"uptimeSeconds":517,"authEnabled":true}')
+check(dec.screenOn is False and dec.authEnabled is True and dec.name == "SONY XR-77A95L", "JSON: PiPup's /status (as PiPup 0.3.4 answered) is read")
 
 # ---- PiPup: the JSON
+G.Properties["Seconds On Screen"] = "20"
 G.Properties["Position"] = "Top Right"
+item = d.table({"title": "דלת הכניסה".encode(), "message": "מישהו בדלת".encode(), "picture": b"http://192.168.50.10:9000/snap/1.jpg"})
 popup = json.loads(utf8(d.call("PipupBody", item)))
-check(popup == {"id": "directorlink", "duration": 20, "position": 0, "title": "דלת הכניסה", "message": "מישהו בדלת", "titleSize": 20,
-                "messageSize": 16, "backgroundColor": "#E6000000", "media": {"image": {"uri": "http://192.168.50.10:9000/snap/1.jpg", "width": 480}}},
-      f"PiPup: one pop-up (id directorlink), the picture as media.image ({popup})")
+check(popup == {"id": "directorlink", "duration": 20, "position": 0, "title": "דלת הכניסה", "message": "מישהו בדלת",
+                "media": {"image": {"uri": "http://192.168.50.10:9000/snap/1.jpg", "width": 640}}},
+      f"PiPup: one pop-up id, Hebrew as given, the picture as media.image, nothing PiPup does not document ({popup})")
 for pos, n in (("Top Right", 0), ("Top Left", 1), ("Bottom Right", 2), ("Bottom Left", 3), ("Center", 4)):
     G.Properties["Position"] = pos
-    check(json.loads(utf8(d.call("PipupBody", item)))["position"] == n, f"Position {pos} is {n} for PiPup")
-check("media" not in json.loads(utf8(d.call("PipupBody", d.table({"title": b"A", "message": b"B"})))), "PiPup: no picture, no media")
+    check(json.loads(utf8(d.call("PipupBody", item)))["position"] == n, f"Position {pos} is {n}, as PiPup numbers them")
+plain = json.loads(utf8(d.call("PipupBody", d.table({"title": b"A", "message": b"B"}))))
+check("media" not in plain and plain["title"] == "A" and plain["message"] == "B", "no picture, no media")
+only_title = json.loads(utf8(d.call("PipupBody", d.table({"title": b"Gate", "message": b""}))))
+check(only_title.get("message") == "Gate" and "title" not in only_title, "a title alone is the message")
 G.Properties["Seconds On Screen"] = "500"
 check(json.loads(utf8(d.call("PipupBody", item)))["duration"] == 120, "Seconds On Screen is kept within 3-120")
 
@@ -102,5 +81,8 @@ G.Properties["Quiet Hours"] = ""
 # ---- The log filter
 red = d.call("Redact", "GET http://admin:pa55w0rd@192.168.1.20/snap.jpg failed; picture https://u:p@cam/x")
 check("pa55w0rd" not in red and "u:p@" not in red and "http://***@192.168.1.20/snap.jpg" in red, f"Log: a login in an address is hidden ({red})")
+d.call("RegisterSecret", "S3cretTok3n")
+red = d.call("Redact", "Authorization: Bearer S3cretTok3n")
+check("S3cretTok3n" not in red, f"Log: the token is hidden ({red})")
 
 finish()

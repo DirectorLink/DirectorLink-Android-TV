@@ -1,15 +1,18 @@
-"""The driver against the TV apps (offline).   python tests/test_driver.py
+"""The driver against PiPup (offline).   python tests/test_driver.py
 
-The real driver code in Lua 5.1, a fake Director (harness.py) and fake TV apps
-(fake_apps.py): Notifications for Android TV and PiPup, a TV that is off (no answer), one
-whose app is not running (refused at once), slow, or refusing; PiPup's screen and overlay
-permission; pictures; the checks (every minute, then 5 s, 30 s, 2 min, every 5 min); the
-DirectorLink notification agreement (variables, both ways in, VERSION, KIND, ID repeats); the
-kinds, Quiet Hours, one pop-up every 5 s with a doorbell or the alarm first; Find TVs.
+The real driver code in Lua 5.1, a fake Director (harness.py) and a fake PiPup (fake_apps.py,
+"PiPup - TV Notifications" by Alexander Savin as it answers): /status before each pop-up (the
+screen on, a token wanted), /notify, a token (401), the IP allowlist (403), a TV that is off (no
+answer), PiPup not running (refused at once), slow or refusing answers; pictures; the checks (every
+minute, then 5 s, 30 s, 2 min, every 5 min); the DirectorLink notification agreement (variables,
+both ways in, VERSION, KIND, ID repeats); the kinds, Quiet Hours, one pop-up every 5 s with a
+doorbell or the alarm first; Find TVs.
 """
 import json
 
-from fake_apps import FakeNfa, FakePiPup, attach_ssdp
+import base64
+
+from fake_apps import JPEG, FakePictures, FakePiPup, attach_ssdp
 from harness import Driver, check, finish
 
 IP = "192.168.50.50"
@@ -17,14 +20,12 @@ CTRL = "192.168.50.10"
 HE_TITLE, HE_MESSAGE = "דלת הכניסה", "מישהו מצלצל בדלת"
 
 
-def tv(app="nfa", props=None, persist=None, fake=None):
-    """A driver set up for the TV at IP with its app: (driver, fake app)."""
+def tv(props=None, persist=None, fake=None):
+    """A driver set up for the TV at IP with PiPup: (driver, fake PiPup)."""
     p = {"TV IP Address": IP}
-    if app == "pipup":
-        p["TV App"] = "PiPup"
     p.update(props or {})
     d = Driver(props=p, persist=persist)
-    fake = fake or (FakePiPup(IP) if app == "pipup" else FakeNfa(IP))
+    fake = fake or FakePiPup(IP)
     fake.attach(d)
     d.start()
     d.pump(3000)
@@ -41,8 +42,8 @@ def notify(d, kind="doorbell", nid=None, title="Front Door", message="Someone is
     return d.from_proxy(5001, "DIRECTORLINK_NOTIFY", params)
 
 
-def posts(fake, path):
-    return [r for r in fake.requests if r[0] == "POST" and r[1] == path]
+def paths(fake, method=None):
+    return [r[1] for r in fake.requests if method is None or r[0] == method]
 
 
 # ============================================================ variables (the agreement)
@@ -58,104 +59,152 @@ d, app = tv()
 d.command("SHOW_NOTIFICATION", {"Title": "Hello", "Message": "World"})
 d.pump(1000)
 d2 = Driver(props={"TV IP Address": IP, "Alarm": "Off"}, persist=d.persisted())
-FakeNfa(IP).attach(d2)
+FakePiPup(IP).attach(d2)
 d2.start()
 check("DIRECTORLINK_NOTIFY" in list(d2.g.VAR_LOG.values()) and d2.var("DIRECTORLINK_NOTIFY_KINDS") == "doorbell", "a restart writes the agreement's variables again")
 check(d2.var("LAST_NOTIFICATION") == "Hello: World" and d2.var_order()[0] == "LAST_NOTIFICATION", "LAST_NOTIFICATION comes back after a restart, same order")
 
-# ============================================================ Notifications for Android TV
+# ============================================================ PiPup: checks and pop-ups
 d, app = tv()
-check(d.prop("Status") == "Ready" and d.prop("TV") == "Notifications for Android TV", f"the app answers GET /: Ready ({d.prop('Status')})")
-check(app.requests and app.requests[0][:2] == ("GET", "/"), "checked with GET / on port 7676 (as Home Assistant does)")
+check(d.prop("Status") == "Ready", f"PiPup answers /status: Ready ({d.prop('Status')})")
+check(d.prop("TV") == "SONY XR-77A95L · PiPup 0.3.4", f"the TV property from PiPup's /status ({d.prop('TV')})")
+check(paths(app)[:1] == ["/status"] and "/state" not in paths(app), "checked with GET /status on port 7979 (PiPup has no /state)")
 d.clear()
-notify(d, title=HE_TITLE, message=HE_MESSAGE, nid="n-1", PICTURE="http://127.0.0.1:47200/notify/abc.jpg")
+n_status = paths(app).count("/status")
+notify(d, title=HE_TITLE, message=HE_MESSAGE, nid="p-1", PICTURE="http://127.0.0.1:47200/notify/abc.jpg")
 check(d.events() == [], "never blocks: DIRECTORLINK_NOTIFY returns before the TV answers")
-d.pump(1000)
-shown = app.shown[-1] if app.shown else {}
-check(shown.get("title") == HE_TITLE and shown.get("msg") == HE_MESSAGE, f"the pop-up: title and message apart, Hebrew exactly as given ({shown.get('title')}, {shown.get('msg')})")
-check(shown.get("imageurl") == f"http://{CTRL}:47200/notify/abc.jpg", f"the picture as imageurl, at the controller's address ({shown.get('imageurl')})")
-check(shown.get("duration") == "15" and shown.get("position") == "2" and shown.get("interrupt") == "0", "15 s, top right, not taking the remote")
-check(len(shown.get("icon", b"")) == 68, "the icon part (Home Assistant's 1 x 1 PNG)")
+d.pump(2500)
+check(paths(app).count("/status") == n_status + 1, "before a pop-up, /status: is the screen on?")
+popup = app.shown[-1] if app.shown else {}
+check(popup.get("id") == "directorlink" and popup.get("duration") == 15 and popup.get("position") == 0 and popup.get("title") == HE_TITLE
+      and popup.get("message") == HE_MESSAGE, f"POST /notify: Hebrew as given, 15 s, top right ({ {k: v for k, v in popup.items() if k != 'media'} })")
+check(popup.get("media") == {"image": {"uri": f"http://{CTRL}:47200/notify/abc.jpg", "width": 640}},
+      "no picture server answering: the pop-up carries the picture's address, at the controller's address")
+req = [r for r in app.requests if r[1] == "/notify"][-1]
+check(any(k.lower() == "content-type" and v.startswith("application/json") for k, v in req[2].items()), "JSON")
+check(not any(k.lower() == "authorization" for k in req[2]), "no token set: no Authorization header")
 check(d.events() == ["Notification Shown"] and d.event_vars() == [("Notification Shown", f"{HE_TITLE}: {HE_MESSAGE}")],
       "Notification Shown, LAST_NOTIFICATION set before it")
-req = [r for r in d.http_log(IP) if r["method"] == "POST"][-1]
-check(req["opts"].get("connect_timeout") == 3 and req["opts"].get("timeout") == 15, "the TV has 3 s to take the connection; the app 15 s to answer")
 check(any("Shown on the TV: Doorbell" in l and "with its picture" in l for l in d.logs()), "one Info line, with its picture")
+http = [r for r in d.http_log(IP) if r["url"].endswith("/notify")][-1]
+check(http["opts"].get("connect_timeout") == 3, "the TV has 3 s to take the connection")
+d.pump(5000)
 d.clear()
-notify(d, via="ReceivedFromProxy", nid="n-2", kind="alarm", title="Alarm", message="Burglary")
+notify(d, via="ReceivedFromProxy", nid="p-2", kind="alarm", title="Alarm", message="Burglary")
 d.pump(6000)
-check(app.shown[-1]["msg"] == "Burglary" and d.events() == ["Notification Shown"], "DIRECTORLINK_NOTIFY by ReceivedFromProxy too")
+check(app.shown[-1]["message"] == "Burglary" and d.events() == ["Notification Shown"], "DIRECTORLINK_NOTIFY by ReceivedFromProxy too")
 d.clear()
 d.command("SHOW_NOTIFICATION", {"Title": "Gate", "Message": "Opened", "Picture URL": "http://192.168.50.60/snapshot.jpg"})
 d.pump(6000)
-check(app.shown[-1]["imageurl"] == "http://192.168.50.60/snapshot.jpg" and app.shown[-1]["title"] == "Gate", "Show Notification with a Picture URL")
+check(app.shown[-1]["media"]["image"]["uri"] == "http://192.168.50.60/snapshot.jpg" and app.shown[-1]["title"] == "Gate", "Show Notification with a Picture URL")
 d.set_prop("Pictures", "Off")
-notify(d, nid="n-3", PICTURE="http://127.0.0.1/x.jpg")
+notify(d, nid="p-3", PICTURE="http://127.0.0.1/x.jpg")
 d.pump(6000)
-check("imageurl" not in app.shown[-1], "Pictures Off: no picture")
+check("media" not in app.shown[-1], "Pictures Off: no picture")
 d.set_prop("Pictures", "On")
 d.set_prop("Position", "Bottom Left")
 d.set_prop("Seconds On Screen", "30")
-notify(d, nid="n-4", PICTURE="ftp://nope/x.jpg")
+notify(d, nid="p-4", PICTURE="ftp://nope/x.jpg")
 d.pump(6000)
-check(app.shown[-1]["position"] == "1" and app.shown[-1]["duration"] == "30" and "imageurl" not in app.shown[-1],
+check(app.shown[-1]["position"] == 3 and app.shown[-1]["duration"] == 30 and "media" not in app.shown[-1],
       "Position and Seconds On Screen; a picture that is not http(s) is left out")
-check(any("not an http address" in l for l in d.logs()), "the log says why the picture was left out")
-d.clear()
-d.command("SHOW_NOTIFICATION", {"Title": "Cam", "Message": "x", "Picture URL": "http://admin:Secr3tPw@192.168.50.61/snap.jpg"})
-d.pump(6000)
 d.set_prop("Log Level", "Trace")
 d.command("SHOW_NOTIFICATION", {"Title": "Cam", "Message": "y", "Picture URL": "http://admin:Secr3tPw@192.168.50.61/snap.jpg"})
 d.pump(6000)
 d.action("PrintDiagnostics")
-check(app.shown[-1]["imageurl"] == "http://admin:Secr3tPw@192.168.50.61/snap.jpg", "a camera login in the picture's address goes to the TV")
+check(app.shown[-1]["media"]["image"]["uri"] == "http://admin:Secr3tPw@192.168.50.61/snap.jpg", "a camera login in the picture's address goes to PiPup")
 check(not [l for l in d.logs() if "Secr3tPw" in l], "but never into a log line (Trace and Print Diagnostics too)")
+check(not [p for p in paths(app) if p.startswith("/power")], "the driver never asks PiPup to turn the screen on")
 
-# ============================================================ PiPup
-d, app = tv("pipup")
-check(d.prop("Status") == "Ready", f"PiPup answers /state: Ready ({d.prop('Status')})")
-check(d.prop("TV") == "Family Room TV · Sony BRAVIA 4K VH21 · Android 12 · PiPup 0.26.1", f"the TV property from PiPup's /state ({d.prop('TV')})")
+# ============================================================ pictures, inline
+d, app = tv()
+pics = FakePictures({"/notify/ring.jpg": JPEG, "/page.html": b"<html>not a picture</html>", "/big.jpg": JPEG + b"x" * 2000000})
+d.serve("127.0.0.1:47200", pics)
+cam = FakePictures({"/snap.jpg": JPEG})
+d.serve("192.168.50.61:80", cam)
 d.clear()
-n_state = len([r for r in app.requests if r[1] == "/state"])
-notify(d, title=HE_TITLE, message=HE_MESSAGE, nid="p-1", PICTURE="http://127.0.0.1:47200/notify/abc.jpg")
+notify(d, nid="i-1", title="Front Door", message="Ring", PICTURE="http://127.0.0.1:47200/notify/ring.jpg")
 d.pump(1000)
-check(len([r for r in app.requests if r[1] == "/state"]) == n_state + 1, "before a pop-up, /state: is the screen on?")
-popup = app.shown[-1] if app.shown else {}
-check(popup.get("id") == "directorlink" and popup.get("title") == HE_TITLE and popup.get("message") == HE_MESSAGE and popup.get("duration") == 15
-      and popup.get("position") == 0, f"POST /notify: one pop-up id, Hebrew as given, 15 s, top right ({popup})")
-check(popup.get("media") == {"image": {"uri": f"http://{CTRL}:47200/notify/abc.jpg", "width": 480}}, "the picture as media.image, at the controller's address")
-hdr = posts(app, "/notify")[-1][2]
-check(any(k.lower() == "content-type" and v == "application/json; charset=utf-8" for k, v in hdr.items()), "JSON, UTF-8")
-check(d.events() == ["Notification Shown"], "Notification Shown")
-app.screen_on = False
+uri = app.shown[-1]["media"]["image"]["uri"]
+check(pics.requests == ["/notify/ring.jpg"] and uri.startswith("data:image/jpeg;base64,") and base64.b64decode(uri.split(",", 1)[1]) == JPEG,
+      "DirectorLink's picture on the controller: fetched by the driver (127.0.0.1), carried inline, byte for byte")
+check(d.events() == ["Notification Shown"] and any("with its picture" in l for l in d.logs()), "shown with its picture")
 d.pump(5000)
-d.clear()
-notify(d, nid="p-2")
+d.command("SHOW_NOTIFICATION", {"Title": "Gate", "Message": "Opened", "Picture URL": "http://admin:Secr3tPw@192.168.50.61/snap.jpg"})
 d.pump(1000)
-check(d.events() == ["Notification Failed"] and len(app.shown) == 1, "the screen off: no pop-up, Notification Failed")
+uri = app.shown[-1]["media"]["image"]["uri"]
+check(cam.requests == ["/snap.jpg"] and uri.startswith("data:image/jpeg;base64,"), "a camera's snapshot with a login: fetched by the driver, carried inline")
+check(any(r["url"] == "http://admin:Secr3tPw@192.168.50.61/snap.jpg" for r in d.http_log()), "the login goes in the address Control4 fetches (it sends it as a login)")
+for path, why in (("/page.html", "not a picture"), ("/big.jpg", "too large")):
+    d.pump(5000)
+    notify(d, nid="i-" + path, PICTURE="http://127.0.0.1:47200" + path)
+    d.pump(1000)
+    check(app.shown[-1]["media"]["image"]["uri"] == f"http://{CTRL}:47200{path}", f"{why}: the pop-up carries the address instead")
+pics.delay_ms = 3000
+d.pump(5000)
+t0 = d.now()
+d.clear()
+notify(d, nid="i-slow", PICTURE="http://127.0.0.1:47200/notify/ring.jpg")
+d.pump(1900)
+check(not d.events(), "a slow picture: the pop-up waits for it")
+d.pump(1000)
+check(d.events() == ["Notification Shown"] and app.shown[-1]["media"]["image"]["uri"] == f"http://{CTRL}:47200/notify/ring.jpg",
+      "not fetched within 2 s: the pop-up goes with the address")
+pics.delay_ms = 20
+d.set_prop("Pictures", "Off")
+n = len(pics.requests)
+notify(d, nid="i-off", PICTURE="http://127.0.0.1:47200/notify/ring.jpg")
+d.pump(6000)
+check(len(pics.requests) == n and "media" not in app.shown[-1], "Pictures Off: nothing fetched, no picture")
+
+# The screen off: nothing sent
+app.screen_on = False
+d.pump(6000)
+d.clear()
+notify(d, nid="p-5")
+d.pump(1000)
+check(d.events() == ["Notification Failed"] and paths(app).count("/notify") == 6, "the screen off: no pop-up, Notification Failed")
 check(d.prop("Status") == "Off" and any("screen is off" in l for l in d.logs()), f"Status Off, the log says the screen is off ({d.prop('Status')})")
 app.screen_on = True
-app.overlay = False
-d.pump(5000)
-d.clear()
-notify(d, nid="p-3")
-d.pump(1000)
-check(d.events() == ["Notification Failed"] and d.prop("Status").startswith("PiPup may not show pop-ups"),
-      f"no overlay permission (PiPup would answer 200 and show nothing): not sent, Status says what to allow ({d.prop('Status')})")
-app.overlay = True
-app.has_state = False
-d.pump(5000)
-d.clear()
-notify(d, nid="p-4")
-d.pump(1000)
-check(d.events() == ["Notification Shown"] and len(app.shown) == 2, "an early PiPup without /state: sent all the same")
-check(not [r for r in app.requests if r[1].startswith("/power")], "the driver never asks PiPup to turn the screen on")
+d.pump(61000)
+check(d.prop("Status") == "Ready", "the screen on again: Ready by the next check")
 
-# Switching the app re-checks the TV with the other one
-d, nfa = tv()
-pip = FakePiPup(IP).attach(d)
-d.set_prop("TV App", "PiPup", pump_ms=2000)
-check(pip.requests and pip.requests[0][1] == "/state" and d.prop("Status") == "Ready", "TV App changed: the TV is checked with PiPup")
+# ============================================================ a token, the IP allowlist
+d, app = tv(fake=FakePiPup(IP))
+app.token = "S3cretTok3n"
+d.pump(61000)
+check(d.prop("Status").startswith("PiPup asks for a token"), f"PiPup wants a token (authEnabled): Status says so ({d.prop('Status')})")
+d.clear()
+notify(d, nid="t-1")
+d.pump(2000)
+check(d.events() == ["Notification Failed"] and "/notify" not in paths(app)[-2:], "no token: not sent, Notification Failed")
+d.set_prop("PiPup Token", "wrong", pump_ms=3000)
+d.clear()
+notify(d, nid="t-2")
+d.pump(6000)
+check(d.events() == ["Notification Failed"] and d.prop("Status") == "PiPup did not take the token: check PiPup Token",
+      f"a wrong token: 401, Status says to check it ({d.prop('Status')})")
+d.set_prop("Log Level", "Trace")
+d.set_prop("PiPup Token", "S3cretTok3n", pump_ms=3000)
+d.pump(5000)
+d.clear()
+notify(d, nid="t-3")
+d.pump(6000)
+req = [r for r in app.requests if r[1] == "/notify"][-1]
+check(d.events() == ["Notification Shown"] and req[2].get("Authorization") == "Bearer S3cretTok3n", "the right token: sent as Authorization: Bearer, shown")
+check(d.prop("Status") == "Ready", "Ready")
+d.action("PrintDiagnostics")
+check(not [l for l in d.logs() if "S3cretTok3n" in l], "the token is never in a log line (Trace, Print Diagnostics, the property change)")
+check(any("one is set, never shown" in l for l in d.logs()), "Print Diagnostics says a token is set")
+
+d, app = tv()
+app.blocked = True
+d.pump(5000)
+d.clear()
+notify(d, nid="b-1")
+d.pump(2000)
+check(d.events() == ["Notification Failed"] and d.prop("Status").startswith(f"PiPup refuses this controller: allow {CTRL}"),
+      f"the IP allowlist leaves the controller out (403): Status names the address to allow ({d.prop('Status')})")
 
 # ============================================================ off, not running, slow, refusing
 d, app = tv()
@@ -174,44 +223,47 @@ d.pump(5000)
 d.clear()
 notify(d, nid="o-2")
 d.pump(100)
-check(d.events() == ["Notification Failed"] and "does not: install it and open it once on the TV" in d.prop("Status"),
-      f"the TV refuses at once (the app not running): Failed at once, Status says to open it ({d.prop('Status')})")
+check(d.events() == ["Notification Failed"] and d.prop("Status").startswith("The TV answers, but PiPup does not"),
+      f"the TV refuses at once (PiPup not running): Failed at once, Status says to open PiPup ({d.prop('Status')})")
 app.running = True
-app.delay_ms = 8000
+app.delay_ms = 2500
 d.pump(5000)
 d.clear()
-notify(d, nid="o-3", PICTURE="http://192.168.50.60/snap.jpg")
+notify(d, nid="o-3")
 d.pump(9000)
-check(d.events() == ["Notification Shown"], "an answer after 8 s (a picture can take a while): Shown")
-app.delay_ms = 20000
+check(d.events() == ["Notification Shown"], "slow answers (2.5 s each): Shown")
+app.delay_ms = 4000
 d.pump(5000)
 d.clear()
-notify(d, nid="o-4")
-d.pump(16000)
-check(d.events() == ["Notification Failed"] and any("no answer from Notifications for Android TV within 15 s" in l for l in d.logs()), "no answer within 15 s: Failed")
+notify(d, nid="o-3b")
+d.pump(9000)
+check(d.events() == ["Notification Failed"] and any("Not shown" in l and "within 3 s" in l for l in d.logs()),
+      "a TV that takes 4 s to answer /status: dropped (the TV has 3 s)")
 app.delay_ms = 30
-app.status = 500
 d.pump(5000)
 d.clear()
-notify(d, nid="o-5")
+app.has_status = False
+notify(d, nid="o-4")
 d.pump(6000)
-check(d.events() == ["Notification Failed"] and any("answered HTTP 500" in l for l in d.logs()), "HTTP 500: Failed")
+check(d.events() == ["Notification Shown"], "a PiPup without /status: sent all the same")
+app.has_status = True
 d = Driver(props={"TV IP Address": "192.168.50.99"})
 d.start()
 d.pump(10000)
 check(d.prop("Status") == "Not reachable", f"no TV ever at the address: Not reachable ({d.prop('Status')})")
 
+# A different port
+d, app = tv(props={"PiPup Port": "8080"}, fake=type("P", (FakePiPup,), {"port": 8080})(IP))
+check(d.prop("Status") == "Ready" and d.http_log(IP)[0]["url"].startswith(f"http://{IP}:8080/"), "PiPup Port: another port")
+
 # ============================================================ checks: every minute; when gone, 5 s, 30 s, 2 min, then every 5 min
 d, app = tv()
-n0 = len([r for r in app.requests if r[0] == "GET"])
+n0 = len(paths(app, "GET"))
 d.pump(5 * 60000 + 1000)
-check(len([r for r in app.requests if r[0] == "GET"]) - n0 == 5, "the app answers: checked every minute")
-app.network = False
-d.pump(61000 + 4000)
-check(d.prop("Status") == "Off", "gone: Off")
+check(len(paths(app, "GET")) - n0 == 5, "PiPup answers: checked every minute")
 d2, app2 = tv()
 app2.network = False
-d2.pump(61000)  # the next check fails (3 s)
+d2.pump(61000)
 d2.g.HTTP_LOG = d2.lua.table_from([])
 d2.pump(40 * 60000)
 starts = [e["at"] for e in d2.http_log(IP)]
@@ -225,18 +277,18 @@ check(d2.prop("Status") == "Ready", "back: Ready by the next check")
 d, app = tv()
 persist = d.persisted()
 d2 = Driver(props={"TV IP Address": IP}, persist=persist)
-gone = FakeNfa(IP)
+gone = FakePiPup(IP)
 gone.network = False
 gone.attach(d2)
 d2.start()
 d2.pump(10000)
-check(d2.prop("Status") == "Off", f"after a restart, a TV that answered here before: Off ({d2.prop('Status')})")
+check(d2.prop("Status") == "Off" and d2.prop("TV") == "SONY XR-77A95L · PiPup 0.3.4", f"after a restart, a TV that answered here before: Off, its name kept ({d2.prop('Status')})")
 table_persist = {k: (json.loads(v[5:]) if isinstance(v, str) and v.startswith("json:") else v) for k, v in persist.items()}
 d3 = Driver(props={"TV IP Address": IP}, persist=table_persist)
-FakeNfa(IP).attach(d3)
+FakePiPup(IP).attach(d3)
 d3.start()
 d3.pump(3000)
-check(d3.var("LAST_NOTIFICATION") is not None and d3.prop("Status") == "Ready", "saved values Director returns as a table are read too")
+check(d3.prop("Status") == "Ready", "saved values Director returns as a table are read too")
 
 # ============================================================ kinds, IDs, Quiet Hours
 d, app = tv()
@@ -248,7 +300,7 @@ check(not app.shown and d.events() == [], "Camera Alerts, Doors and Gates, Other
 d.set_prop("Camera Alerts", "On")
 notify(d, kind="camera", nid="k-5", title="Garden", message="Person")
 d.pump(1000)
-check(app.shown[-1]["msg"] == "Person", "Camera Alerts On: shown")
+check(app.shown[-1]["message"] == "Person", "Camera Alerts On: shown")
 notify(d, nid="same")
 d.pump(6000)
 notify(d, nid="same")
@@ -283,26 +335,26 @@ notify(d, kind="doorbell", nid="r-3", title="Bell", message="3")
 notify(d, kind="other", nid="r-4", title="Other", message="4")
 notify(d, kind="alarm", nid="r-5", title="Alarm", message="5")
 d.pump(30000)
-texts = [s["msg"] for s in app.shown]
+texts = [s["message"] for s in app.shown]
 check(texts == ["1", "3", "5", "2", "4"], f"one at a time; the doorbell and the alarm before those waiting ({texts})")
 check(d.eval("gNotify.lastSentMs") - t0 >= 20000, "at most one pop-up every 5 s")
 
 # ============================================================ Find TVs
 d = Driver()
 ssdp = attach_ssdp(d, [
-    {"ip": "192.168.50.50", "name": "Family Room TV", "maker": "Sony", "model": "BRAVIA 4K VH21"},
-    {"ip": "192.168.50.51", "name": "Kitchen", "maker": "Google", "model": "Chromecast"},
-    {"ip": "192.168.50.52", "maker": "TCL", "model": "Google TV"},
+    {"ip": "192.168.50.50", "name": "SONY XR-77A95L", "maker": "Sony", "model": "BRAVIA 4K AE1"},
+    {"ip": "192.168.50.51", "name": "TapCast-4085", "maker": "Google Inc.", "model": "Eureka Dongle"},
+    {"ip": "192.168.50.52", "maker": "Xiaomi", "model": "MiTV-AFKR0"},
     {"ip": "192.168.50.53", "name": "Bedroom TV", "standby": True},
 ])
-FakeNfa("192.168.50.50").attach(d)
+FakePiPup("192.168.50.50").attach(d)
 d.start()
 d.pump(12000)
 items = d.prop_list("TVs Found")
-check(items == ["-", "Family Room TV (192.168.50.50) - Notifications for Android TV answers", "Kitchen (192.168.50.51)", "TCL Google TV (192.168.50.52)"],
-      f"no address: Find TVs runs; the TVs with the app first, each by its own name ({items})")
+check(items == ["-", "SONY XR-77A95L (192.168.50.50) - PiPup answers", "TapCast-4085 (192.168.50.51)", "Xiaomi MiTV-AFKR0 (192.168.50.52)"],
+      f"no address: Find TVs runs; the TVs with PiPup first (GET /ping), each by its own name ({items})")
 check(len(ssdp.searches) == 3, "the M-SEARCH is sent 3 times")
-d.set_prop("TVs Found", "Family Room TV (192.168.50.50) - Notifications for Android TV answers", pump_ms=2000)
+d.set_prop("TVs Found", "SONY XR-77A95L (192.168.50.50) - PiPup answers", pump_ms=2000)
 check(d.prop("TV IP Address") == "192.168.50.50" and d.prop("Status") == "Ready", "picking a TV fills TV IP Address and checks it")
 
 finish()

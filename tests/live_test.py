@@ -1,10 +1,10 @@
 """Live test: the real driver code against a real TV, from a computer on the same network.
 
-    python tests/live_test.py find                                # Find TVs: the driver's own search, over real UDP
-    python tests/live_test.py <TV IP> [nfa|pipup] [picture URL]   # check the app, Print Diagnostics, pop-ups
+    python tests/live_test.py find                               # Find TVs: the driver's own search, over real UDP
+    python tests/live_test.py <TV IP> [picture URL] [token=...]   # check PiPup, Print Diagnostics, pop-ups
 
 Runs the assembled driver.lua in the harness (Lua 5.1 and the fake Director) with its
-requests made for real: HTTP to the TV's app (and to the casting devices' descriptions),
+requests made for real: HTTP to PiPup on the TV (and to the casting devices' descriptions),
 UDP for the search. The driver's clock follows the real one. Not part of CI.
 
 The pop-ups: Test Notification, a DIRECTORLINK_NOTIFY doorbell in Hebrew (with the picture
@@ -30,7 +30,10 @@ def real_http(method, url, headers, body):
     path = parts.path or "/"
     if parts.query:
         path += "?" + parts.query
-    conn = http.client.HTTPConnection(parts.hostname, parts.port or 80, timeout=CONNECT_S)
+    if parts.scheme == "https":
+        conn = http.client.HTTPSConnection(parts.hostname, parts.port or 443, timeout=CONNECT_S)
+    else:
+        conn = http.client.HTTPConnection(parts.hostname, parts.port or 80, timeout=CONNECT_S)
     try:
         conn.connect()
     except ConnectionRefusedError:
@@ -126,10 +129,10 @@ def find():
     print("\nTVs Found:", live.d.prop_list("TVs Found"))
 
 
-def show(ip, app, picture):
-    live = Live({"TV IP Address": ip, "TV App": "PiPup" if app == "pipup" else "Notifications for Android TV", "Log Level": "Trace"})
+def show(ip, picture, token):
+    live = Live({"TV IP Address": ip, "PiPup Token": token or "", "Log Level": "Trace"})
     d = live.d
-    print(f"\n== Checking {ip} ({d.prop('TV App')})")
+    print(f"\n== Checking PiPup at {ip}")
     live.run(8, until=lambda: d.prop("Status") not in ("Starting...", "Checking..."))
     print(f"\n== Status: {d.prop('Status')}   TV: {d.prop('TV')}")
     if d.prop("Status") != "Ready":
@@ -161,6 +164,6 @@ if __name__ == "__main__":
         find()
     else:
         args = sys.argv[2:]
-        app = "pipup" if "pipup" in args else "nfa"
         pic = next((a for a in args if a.startswith("http")), None)
-        show(sys.argv[1], app, pic)
+        tok = next((a[len("token="):] for a in args if a.startswith("token=")), None)
+        show(sys.argv[1], pic, tok)

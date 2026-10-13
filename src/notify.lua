@@ -16,8 +16,14 @@
       - LAST_NOTIFICATION is set, then "Notification Shown" or
         "Notification Failed" fires. One log line for each.
       - The picture (the agreement's PICTURE, or Show Notification's Picture
-        URL) goes with the pop-up as an address the TV fetches itself, when
-        Pictures is On: 127.0.0.1 becomes the controller's address.
+        URL), when Pictures is On: the driver fetches it at once (on the
+        controller, so 127.0.0.1 works, and a login in a camera's address
+        is sent as a login) and the pop-up carries it inline (a data: URI,
+        which PiPup shows): the TV never has to reach the picture's server,
+        and a picture that lasts 60 seconds cannot expire on the way. The
+        pop-up waits PICTURE_WAIT_MS (2 s) for it at most. When it cannot be
+        fetched, or is too large, the pop-up carries the address instead, for
+        the TV to fetch (127.0.0.1 then becomes the controller's address).
     Nothing here waits: every step is a timer or a callback.
 
     Copyright 2026 DirectorLink
@@ -98,6 +104,8 @@ end
 TOAST_JOIN = ": "
 TOAST_MAX_BYTES = 1000 -- longer text is cut (at a character boundary)
 TITLE_MAX_BYTES = 200
+PICTURE_WAIT_MS = 2000         -- a pop-up waits this long for its picture, then carries the address
+PICTURE_MAX_BYTES = 1500000    -- larger: the address goes instead
 
 function CutUtf8(s, max)
 	if #s <= max then return s end
@@ -141,6 +149,16 @@ function PictureUrl(url)
 	return string.lower(scheme) .. "://" .. (login or "") .. h .. port .. rest
 end
 
+-- The picture's media type from its first bytes (nil: not a picture PiPup shows)
+function PictureType(data)
+	if type(data) ~= "string" or #data < 12 then return nil end
+	if string.sub(data, 1, 2) == "\255\216" then return "image/jpeg" end
+	if string.sub(data, 1, 8) == "\137PNG\r\n\026\n" then return "image/png" end
+	if string.sub(data, 1, 4) == "GIF8" then return "image/gif" end
+	if string.sub(data, 1, 4) == "RIFF" and string.sub(data, 9, 12) == "WEBP" then return "image/webp" end
+	return nil
+end
+
 -- For a log line: one line, not too long
 local function Short(s)
 	s = string.gsub(tostring(s or ""), "[\r\n]+", " ")
@@ -164,6 +182,8 @@ end
 local function Finish(item, ok, why)
 	if item.finished then return end
 	item.finished = true
+	item.picturePending = false
+	KillTimer("PICTURE_" .. item.seq)
 	SetVar("LAST_NOTIFICATION", item.text, true)
 	if ok then
 		gNotify.counts.shown = gNotify.counts.shown + 1
@@ -216,6 +236,8 @@ NotifyPump = function()
 	local i = NextIndex()
 	if not i then return end
 	local item = gNotify.queue[i]
+	-- Its picture first (fetched when the notification came; PICTURE_WAIT_MS at most)
+	if item.picturePending then return end
 	local wait = gNotify.lastSentMs and (gNotify.lastSentMs + NOTIFY_GAP_MS - now) or 0
 	if wait > 0 then
 		SetTimer("NOTIFY_NEXT", wait, NotifyPump)
@@ -252,6 +274,41 @@ local function Enqueue(item)
 	end
 	q[#q + 1] = item
 	NotifyPump()
+end
+
+-- The picture, fetched by the driver: item.pictureData = "data:image/jpeg;base64,..." when it comes in
+-- time, is a picture and is not too large; else the pop-up carries the address (item.picture).
+local function FetchPicture(item, url)
+	item.picturePending = true
+	local function done(data, why)
+		if not item.picturePending then return end
+		item.picturePending = false
+		KillTimer("PICTURE_" .. item.seq)
+		if data then
+			item.pictureData = data
+		else
+			LogDebug("The picture goes as its address (%s): %s", why, Describe(item))
+		end
+		NotifyPump()
+	end
+	SetTimer("PICTURE_" .. item.seq, PICTURE_WAIT_MS, function() done(nil, "not fetched within " .. (PICTURE_WAIT_MS / 1000) .. " s") end)
+	local ok, err = pcall(function()
+		local x = C4:url()
+		x:SetOptions({ fail_on_error = false, timeout = math.ceil(PICTURE_WAIT_MS / 1000), connect_timeout = 1 })
+		x:OnDone(function(_, responses, errCode, errMsg)
+			local resp = responses and responses[#responses]
+			if (errCode ~= nil and errCode ~= 0) or not resp then return done(nil, tostring(errMsg or errCode)) end
+			local code, body = tonumber(resp.code) or 0, resp.body or ""
+			if code ~= 200 then return done(nil, "HTTP " .. code) end
+			local kind = PictureType(body)
+			if not kind then return done(nil, "not a picture") end
+			if #body > PICTURE_MAX_BYTES then return done(nil, ByteSize(#body) .. ", more than " .. ByteSize(PICTURE_MAX_BYTES)) end
+			LogDebug("The picture: %s, %s", kind, ByteSize(#body))
+			done("data:" .. kind .. ";base64," .. Base64Encode(body))
+		end)
+		x:Get(url, {})
+	end)
+	if not ok then done(nil, tostring(err)) end
 end
 
 --[[------------------------------------------------------------------ Entry
@@ -295,7 +352,11 @@ function NotifyAccept(n)
 			LogDebug("Without its picture (Pictures is Off): %s", Describe(item))
 		else
 			item.picture = PictureUrl(n.picture)
-			if not item.picture then LogWarn("Without its picture (not an http address the TV can fetch: %s): %s", n.picture, Describe(item)) end
+			if item.picture then
+				FetchPicture(item, trim(n.picture))
+			else
+				LogWarn("Without its picture (not an http address: %s): %s", n.picture, Describe(item))
+			end
 		end
 	end
 	Enqueue(item)

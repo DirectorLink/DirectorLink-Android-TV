@@ -3,7 +3,7 @@
 	<creator>DirectorLink</creator>
 	<manufacturer>Android TV</manufacturer>
 	<name>DirectorLink · Android TV Notifications</name>
-	<model>Google TV, Android TV and Fire TV pop-up notifications</model>
+	<model>Google TV and Android TV pop-up notifications (PiPup)</model>
 	<created>10/12/2026 00:00</created>
 	<!-- tools/build.py stamps modified and version from the VERSION file -->
 	<modified>10/12/2026 00:00</modified>
@@ -23,7 +23,7 @@
 
 	<events>
 		<event><id>1</id><name>Notification Shown</name><description>When NAME has shown a pop-up on the TV; LAST_NOTIFICATION is its text</description></event>
-		<event><id>2</id><name>Notification Failed</name><description>When a pop-up could not be shown on NAME's TV (off, not reachable, the app not running, or no answer); LAST_NOTIFICATION is its text</description></event>
+		<event><id>2</id><name>Notification Failed</name><description>When a pop-up could not be shown on NAME's TV (off, not reachable, PiPup not running or refusing, or no answer); LAST_NOTIFICATION is its text</description></event>
 	</events>
 
 	<config>
@@ -34,18 +34,22 @@
 			<property><name>Status</name><type>STRING</type><readonly>true</readonly><default>Starting...</default></property>
 			<property><name>TV</name><type>STRING</type><readonly>true</readonly><default></default></property>
 			<property>
-				<name>TV App</name><type>LIST</type><readonly>false</readonly><default>Notifications for Android TV</default>
-				<items><item>Notifications for Android TV</item><item>PiPup</item></items>
-				<tooltip>The app on the TV that shows the pop-ups. Notifications for Android TV: from Google Play (Notifications for Fire TV from the Amazon Appstore). PiPup: installed from a computer with its script.</tooltip>
-			</property>
-			<property>
 				<name>TV IP Address</name><type>STRING</type><readonly>false</readonly><default></default>
 				<tooltip>The TV's IP address, for example 192.168.1.50, or pick it in TVs Found. Give the TV a fixed address in the router.</tooltip>
 			</property>
 			<property>
 				<name>TVs Found</name><type>LIST</type><readonly>false</readonly><default>-</default>
 				<items><item>-</item></items>
-				<tooltip>The TVs and casting devices that answered Find TVs (they answer while they are on), the ones where the app answers first. Pick one to fill in TV IP Address.</tooltip>
+				<tooltip>The TVs and casting devices that answered Find TVs (they answer while they are on), the ones where PiPup answers first. Pick one to fill in TV IP Address.</tooltip>
+			</property>
+			<property>
+				<name>PiPup Port</name><type>RANGED_INTEGER</type><readonly>false</readonly><default>7979</default>
+				<minimum>1</minimum><maximum>65535</maximum>
+				<tooltip>PiPup's port on the TV: 7979 unless it was changed in PiPup's settings.</tooltip>
+			</property>
+			<property>
+				<name>PiPup Token</name><type>STRING</type><password>true</password><readonly>false</readonly><default></default>
+				<tooltip>Only if a token is set in PiPup's settings on the TV: the same token here. It is never written to a log.</tooltip>
 			</property>
 			<property>
 				<name>Doorbell</name><type>LIST</type><readonly>false</readonly><default>On</default>
@@ -79,7 +83,7 @@
 			<property>
 				<name>Pictures</name><type>LIST</type><readonly>false</readonly><default>On</default>
 				<items><item>On</item><item>Off</item></items>
-				<tooltip>On: a notification's picture (who is at the door or the gate) shows in the pop-up. The TV fetches it from the address the notification gives.</tooltip>
+				<tooltip>On: a notification's picture (who is at the door or the gate) shows in the pop-up. PiPup fetches it from the address the notification gives.</tooltip>
 			</property>
 			<property>
 				<name>Position</name><type>LIST</type><readonly>false</readonly><default>Top Right</default>
@@ -94,7 +98,7 @@
 			<property>
 				<name>Log Level</name><type>LIST</type><readonly>false</readonly><default>Info</default>
 				<items><item>Off</item><item>Errors</item><item>Warnings</item><item>Info</item><item>Debug</item><item>Trace</item></items>
-				<tooltip>Info writes one line for every pop-up. Debug and Trace show every check and every request to the TV.</tooltip>
+				<tooltip>Info writes one line for every pop-up. Debug and Trace show every check and every request to PiPup (never the token).</tooltip>
 			</property>
 		</properties>
 

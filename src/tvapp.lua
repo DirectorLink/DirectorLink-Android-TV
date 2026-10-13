@@ -1,92 +1,79 @@
 --[[=============================================================================
-    DirectorLink Android TV Notifications - the TV and its app
-    An Android TV, Google TV or Fire TV shows a pop-up over whatever is on
-    when an app on it is asked to over the home network. The driver works
-    with two such apps, chosen per TV in the "TV App" property:
+    DirectorLink Android TV Notifications - the TV and PiPup
+    The TV runs "PiPup - TV Notifications" by Alexander Savin (Google Play:
+    nyc.savin.pipup; https://pipup.android.savin.nyc), a free app that shows
+    pop-ups over whatever is on when a device on the home network asks. Its
+    HTTP API (its "How to use" page, and its maker's Home Assistant
+    integration):
+      - GET  /ping    "pipup <version>": the app is there
+      - GET  /status  {"version","id","name","port","active","count",
+                       "screenOn","uptimeSeconds","authEnabled"}
+      - POST /notify  JSON: title, message, duration (s), position (0 top
+                      right, 1 top left, 2 bottom right, 3 bottom left,
+                      4 center), id (the same id updates that pop-up in
+                      place), media.image {uri, width} (uri: an address,
+                      or the picture inline as a data: URI); answers
+                      {"status":"ok","id":...}
+      - A token set in PiPup's settings goes with every request as
+        "Authorization: Bearer <token>" (401 without it). An IP allowlist in
+        PiPup's settings refuses other addresses (403).
+    Port 7979 unless changed in PiPup's settings.
 
-      - "Notifications for Android TV" (Christian Fees; Google Play on
-        Android TV / Google TV 11 and newer, "Notifications for Fire TV" in
-        the Amazon Appstore): port 7676, a multipart POST to "/" with the
-        fields msg, title, duration, position, bkgcolor, transparency,
-        interrupt and imageurl, and a small icon as the file part "filename".
-        The app has no published API: this is the request Home Assistant's
-        integration (notifications-android-tv) and FHEM send, which the app
-        has taken for years. The picture goes as "imageurl": the TV fetches
-        it. Any HTTP answer to "GET /" means the app is there; 200 to the POST
-        means it took the pop-up. It cannot say whether the screen is on.
-      - PiPup (the maintained version, github.com/mhoogenbosch/PiPup,
-        installed with its script): port 7979, POST /notify with JSON (id,
-        duration, position, title, message, media.image.uri), answered 200
-        once the pop-up is on the screen. GET /state says whether the screen
-        is on and whether the app may draw over other apps: a pop-up goes
-        only to a screen that is on.
+    Other apps named PiPup (the original, and other forks) take other
+    requests: the driver works with this one only.
 
-    Off or not reachable: the TV has TV_CONNECT_S (3 s) to take the
-    connection; then the pop-up is dropped. A TV that refuses the connection
-    at once is on, without the app running. The driver never turns the TV on
-    (PiPup's /power is never used).
+    A pop-up goes only to a TV whose screen is on (/status, just before);
+    the TV has TV_CONNECT_S (3 s) to take the connection, then the pop-up is
+    dropped. A TV that refuses the connection at once is on without PiPup
+    running. The driver never turns the TV on.
 
-    The app is checked every minute while it answers; when it does not,
-    after 5 s, 30 s, 2 min, then every 5 min. Each pop-up tries the TV
-    whatever the last check said.
+    PiPup is checked every minute while it answers; when it does not, after
+    5 s, 30 s, 2 min, then every 5 min. Each pop-up tries the TV whatever the
+    last check said.
 
     Copyright 2026 DirectorLink
     SPDX-License-Identifier: Apache-2.0
 ===============================================================================]]
 
-TV_APPS = {
-	nfa = { key = "nfa", name = "Notifications for Android TV", port = 7676, timeoutS = 15 },
-	pipup = { key = "pipup", name = "PiPup", port = 7979, timeoutS = 10 },
-}
-TV_APP_BY_NAME = { ["Notifications for Android TV"] = "nfa", ["PiPup"] = "pipup" }
+PIPUP_PORT = 7979
 TV_CONNECT_S = 3              -- the TV takes the connection within this, or it is off / not reachable
-TV_STATE_TIMEOUT_S = 3        -- PiPup's /state, before a pop-up
-TV_CHECK_MS = 60000           -- the app answers: checked again this often
+TV_TIMEOUT_S = 10             -- PiPup answers a pop-up within this
+TV_STATUS_TIMEOUT_S = 3       -- /status, before a pop-up
+TV_CHECK_MS = 60000           -- PiPup answers: checked again this often
 TV_BACKOFF_S = { 5, 30, 120, 300 }
-POPUP_ID = "directorlink"     -- PiPup: one pop-up at a time, a new one replaces it
-PIPUP_IMAGE_WIDTH = 480
-NFA_BACKGROUND = "#000000"
-NFA_TRANSPARENCY = "1"        -- 0% transparent
--- The icon the app shows beside the text (Home Assistant's: a 1 x 1 transparent PNG)
-NFA_ICON = "\137PNG\013\010\026\010\000\000\000\013IHDR\000\000\000\001\000\000\000\001\008\004\000\000\000\181\028\012\002\000\000\000\011IDATx\156c\250\207\000\000\002\007\001\002\154\0281q\000\000\000\000IEND\174B`\130"
+POPUP_ID = "directorlink"     -- one pop-up at a time: a new one updates it in place
+PIPUP_IMAGE_WIDTH = 640
 
--- "Position" property -> each app's number
-TV_POSITIONS = {
-	["Top Right"] = { nfa = 2, pipup = 0 },
-	["Top Left"] = { nfa = 3, pipup = 1 },
-	["Bottom Right"] = { nfa = 0, pipup = 2 },
-	["Bottom Left"] = { nfa = 1, pipup = 3 },
-	["Center"] = { nfa = 4, pipup = 4 },
-}
+-- "Position" property -> PiPup's position
+TV_POSITIONS = { ["Top Right"] = 0, ["Top Left"] = 1, ["Bottom Right"] = 2, ["Bottom Left"] = 3, ["Center"] = 4 }
 
 gTv = {
-	host = "", app = "nfa",
-	state = "idle",           -- idle, checking, ready, off (PiPup: screen off), nooverlay, noapp, unreachable
-	seenHere = false,         -- the app answered at this address before (Off rather than Not reachable)
+	host = "", port = PIPUP_PORT, token = "",
+	state = "idle",           -- idle, checking, ready, off (screen off), token, blocked, noapp, unreachable
+	seenHere = false,         -- PiPup answered at this address before (Off rather than Not reachable)
 	lastError = nil, lastErrorAt = nil, lastOkAt = nil,
-	info = {},                -- PiPup's /state: name, model, maker, android, version
-	screenOn = nil, overlay = nil,
+	info = {},                -- /status: name, version, id
+	screenOn = nil, authEnabled = nil,
 	backoff = 0, checks = 0, sent = 0, req = 0,
-	gen = 0,                  -- a new address or app: answers to older requests are dropped
+	gen = 0,                  -- a new address, port or token: answers to older requests are dropped
 }
 
 local function Changed()
 	if TvChanged then TvChanged() end
 end
 
-function TvApp()
-	return TV_APPS[gTv.app]
-end
-
---[[------------------------------------------------------------------ HTTP to the TV
+--[[------------------------------------------------------------------ HTTP to PiPup
     cb(code, body, fail): fail is nil, or { kind, text } with kind
-      "refused"      the TV refused at once: it is on, the app is not listening
+      "refused"      the TV refused at once: it is on, PiPup is not listening
       "unreachable"  no connection within TV_CONNECT_S: off, or not on the network
       "timeout"      connected, but no answer in time
       "error"        anything else                                          ]]
-local function Http(method, path, body, headers, timeoutS, cb)
+local function Http(method, path, body, timeoutS, cb)
 	local gen = gTv.gen
-	local url = "http://" .. gTv.host .. ":" .. TvApp().port .. path
+	local url = "http://" .. gTv.host .. ":" .. gTv.port .. path
+	local headers = {}
+	if body then headers["Content-Type"] = "application/json; charset=utf-8" end
+	if gTv.token ~= "" then headers["Authorization"] = "Bearer " .. gTv.token end
 	local started = NowMs()
 	gTv.req = gTv.req + 1
 	local guard = "TV_HTTP_" .. gTv.req
@@ -100,7 +87,7 @@ local function Http(method, path, body, headers, timeoutS, cb)
 	end
 	-- Director answers every request; this is in case it does not
 	SetTimer(guard, (timeoutS + 5) * 1000, function() finish(nil, nil, { kind = "timeout", text = "no answer" }) end)
-	LogTrace("%s %s%s", method, url, body and (" (" .. #body .. " bytes)") or "")
+	LogTrace("%s %s%s", method, url, body and (" " .. string.sub(body, 1, 300)) or "")
 	local ok, err = pcall(function()
 		local x = C4:url()
 		x:SetOptions({ fail_on_error = false, timeout = timeoutS, connect_timeout = TV_CONNECT_S })
@@ -118,24 +105,23 @@ local function Http(method, path, body, headers, timeoutS, cb)
 				end
 				return finish(nil, nil, { kind = kind, text = tostring(errMsg or ("error " .. tostring(errCode))) })
 			end
-			LogTrace("%s %s -> HTTP %s (%d ms)", method, path, tostring(resp.code), NowMs() - started)
+			LogTrace("%s %s -> HTTP %s (%d ms) %s", method, path, tostring(resp.code), NowMs() - started, string.sub(tostring(resp.body or ""), 1, 200))
 			finish(tonumber(resp.code) or 0, resp.body or "", nil)
 		end)
-		if method == "POST" then x:Post(url, body or "", headers or {}) else x:Get(url, headers or {}) end
+		if method == "POST" then x:Post(url, body or "", headers) else x:Get(url, headers) end
 	end)
 	if not ok then finish(nil, nil, { kind = "error", text = tostring(err) }) end
 end
 
 local function FailText(fail, timeoutS)
-	local app = TvApp()
 	if fail.kind == "refused" then
-		return "the TV answers, but " .. app.name .. " does not (not installed, or not started)"
+		return "the TV answers, but PiPup does not (not installed, not started, or on another port)"
 	elseif fail.kind == "unreachable" then
 		return "the TV did not answer within " .. TV_CONNECT_S .. " s (" .. (gTv.seenHere and "off" or "not reachable") .. ")"
 	elseif fail.kind == "timeout" then
-		return "no answer from " .. app.name .. " within " .. tostring(timeoutS or app.timeoutS) .. " s"
+		return "no answer from PiPup within " .. tostring(timeoutS or TV_TIMEOUT_S) .. " s"
 	end
-	return app.name .. ": " .. tostring(fail.text)
+	return "PiPup: " .. tostring(fail.text)
 end
 
 --[[------------------------------------------------------------------ The state ]]
@@ -144,7 +130,7 @@ local ScheduleCheck -- forward
 local function SetState(state, why)
 	local before = gTv.state
 	gTv.state = state
-	if state == "ready" or state == "off" or state == "nooverlay" then
+	if state == "ready" or state == "off" or state == "token" or state == "blocked" then
 		gTv.seenHere = true
 		gTv.lastOkAt = NowMs()
 	end
@@ -159,8 +145,21 @@ local function SetState(state, why)
 	Changed()
 end
 
--- A request the TV did not answer: the state says why. A pop-up that finds the TV gone starts the
--- checks again from 5 s (a check schedules its own next one).
+-- PiPup answered a request with 401 or 403: it wants a token, or does not take this controller
+local function Refusal(code)
+	if code == 401 then
+		local why = gTv.token ~= "" and "PiPup did not take the token in PiPup Token" or "PiPup asks for a token: enter the one set in PiPup's settings in PiPup Token"
+		SetState("token", why)
+		return why
+	end
+	local ip = ControllerAddress() or "the controller"
+	local why = "PiPup refuses requests from " .. ip .. ": allow it in PiPup's settings (IP allowlist)"
+	SetState("blocked", why)
+	return why
+end
+
+-- A request PiPup did not answer: the state says why. A pop-up that finds the TV gone starts the checks
+-- again from 5 s (a check schedules its own next one).
 local function Unanswered(fail, timeoutS, fromCheck)
 	local wasReady = gTv.state == "ready"
 	if fail.kind == "refused" then
@@ -180,55 +179,51 @@ function TvStateText()
 	local s = gTv.state
 	if s == "ready" then return "ready" end
 	if s == "off" then return "off (its screen is off)" end
-	if s == "nooverlay" then return "on, but PiPup may not draw over other apps" end
-	if s == "noapp" then return "on, but " .. TvApp().name .. " does not answer" end
+	if s == "token" then return "on, but PiPup wants a token" end
+	if s == "blocked" then return "on, but PiPup refuses this controller" end
+	if s == "noapp" then return "on, but PiPup does not answer" end
 	if s == "unreachable" then return gTv.seenHere and "off or away" or "not reachable" end
 	return s
 end
 
--- PiPup's /state: cb(ok, why). ok when the app answered (its screen and permission are in gTv). fromCheck:
--- called by a check (which schedules the next one itself).
-local function ReadState(cb, fromCheck)
-	Http("GET", "/state", nil, nil, TV_STATE_TIMEOUT_S, function(code, body, fail)
+-- /status: cb(ok, why). ok when PiPup answered and may be sent a pop-up (screen on, no token missing).
+-- fromCheck: called by a check (which schedules the next one itself).
+local function ReadStatus(cb, fromCheck)
+	Http("GET", "/status", nil, TV_STATUS_TIMEOUT_S, function(code, body, fail)
 		if fail then
-			Unanswered(fail, TV_STATE_TIMEOUT_S, fromCheck)
-			return cb(false, FailText(fail, TV_STATE_TIMEOUT_S))
+			Unanswered(fail, TV_STATUS_TIMEOUT_S, fromCheck)
+			return cb(false, FailText(fail, TV_STATUS_TIMEOUT_S))
 		end
+		if code == 401 or code == 403 then return cb(false, Refusal(code)) end
 		local st = code == 200 and JsonDecode(body) or nil
 		if type(st) ~= "table" then
-			-- An early PiPup without /state: it answers, the rest is not known
-			gTv.screenOn, gTv.overlay = nil, nil
+			-- A PiPup without /status: it answers, the rest is not known
+			gTv.screenOn, gTv.authEnabled = nil, nil
 			SetState("ready")
 			return cb(true)
 		end
-		local device = JsonField(st, "device")
-		local perms = JsonField(st, "permissions")
-		gTv.info = {
-			name = JsonField(st, "name"), version = JsonField(st, "version"),
-			model = type(device) == "table" and JsonField(device, "model") or nil,
-			maker = type(device) == "table" and JsonField(device, "manufacturer") or nil,
-			android = type(device) == "table" and JsonField(device, "android") or nil,
-		}
+		gTv.info = { name = JsonField(st, "name"), version = JsonField(st, "version"), id = JsonField(st, "id") }
 		gTv.screenOn = JsonField(st, "screenOn")
-		gTv.overlay = nil -- not "a and b or nil": false must stay false
-		if type(perms) == "table" then gTv.overlay = JsonField(perms, "overlay") end
-		if gTv.overlay == false then
-			SetState("nooverlay", "PiPup may not draw over other apps on the TV")
-		elseif gTv.screenOn == false then
-			SetState("off", "the TV's screen is off")
-		else
-			SetState("ready")
+		gTv.authEnabled = JsonField(st, "authEnabled")
+		if gTv.authEnabled == true and gTv.token == "" then
+			local why = Refusal(401)
+			return cb(false, why)
 		end
+		if gTv.screenOn == false then
+			SetState("off", "the TV's screen is off")
+			return cb(false, "the TV's screen is off")
+		end
+		SetState("ready")
 		cb(true)
 	end)
 end
 
 --[[------------------------------------------------------------------ Checks ]]
--- ok: the app answered (check again in a minute); not ok: 5 s, 30 s, 2 min, then every 5 min
-ScheduleCheck = function(ok)
+-- answered: PiPup answered (check again in a minute); not: 5 s, 30 s, 2 min, then every 5 min
+ScheduleCheck = function(answered)
 	if not ValidAddress(gTv.host) then return end
 	local ms
-	if ok then
+	if answered then
 		gTv.backoff = 0
 		ms = TV_CHECK_MS
 	else
@@ -251,32 +246,26 @@ function TvCheck()
 		gTv.state = "checking"
 		Changed()
 	end
-	if gTv.app == "pipup" then
-		ReadState(function(ok) ScheduleCheck(ok) end, true)
-	else
-		Http("GET", "/", nil, nil, 5, function(code, body, fail)
-			if fail then
-				Unanswered(fail, 5, true)
-				return ScheduleCheck(false)
-			end
-			-- Any answer: the app is there (the same check Home Assistant makes)
-			SetState("ready")
-			ScheduleCheck(true)
-		end)
-	end
+	ReadStatus(function()
+		ScheduleCheck(gTv.state ~= "unreachable" and gTv.state ~= "noapp" and gTv.state ~= "checking")
+	end, true)
 end
 
--- A new address or app: forget the old one, check the new one now
-function TvConfigure(host, app, sameTv)
+-- A new address, port or token: forget the old one, check now
+function TvConfigure(host, port, token, sameTv)
 	gTv.gen = gTv.gen + 1
 	KillTimer("TV_CHECK")
-	gTv.host, gTv.app = host or "", app or gTv.app
+	if gTv.token ~= "" and gTv.token ~= token then ForgetSecret(gTv.token) end
+	gTv.host, gTv.port, gTv.token = host or "", port or PIPUP_PORT, token or ""
+	RegisterSecret(gTv.token)
 	gTv.state = "idle"
 	gTv.backoff = 0
 	gTv.lastError = nil
-	gTv.screenOn, gTv.overlay = nil, nil
-	gTv.info = {}
-	if not sameTv then gTv.seenHere = false end
+	gTv.screenOn, gTv.authEnabled = nil, nil
+	if not sameTv then
+		gTv.seenHere = false
+		gTv.info = {}
+	end
 	Changed()
 	if ValidAddress(gTv.host) then TvCheck() end
 end
@@ -292,50 +281,19 @@ local function Seconds()
 	return math.max(3, math.min(120, math.floor(n)))
 end
 
-local function Position(app)
-	local p = TV_POSITIONS[Properties["Position"] or ""] or TV_POSITIONS["Top Right"]
-	return p[app]
-end
-
--- Title and message for the app: a title alone is the message
-local function Texts(item)
+-- PiPup's JSON: a title alone is the message
+function PipupBody(item)
 	local title, message = item.title or "", item.message or ""
 	if message == "" then title, message = "", title end
-	return title, message
-end
-
-local function Part(boundary, name, value)
-	return "--" .. boundary .. "\r\nContent-Disposition: form-data; name=\"" .. name .. "\"\r\n\r\n" .. value .. "\r\n"
-end
-
--- Notifications for Android TV: multipart/form-data, as Home Assistant sends it
-function NfaBody(item, boundary)
-	local title, message = Texts(item)
-	local parts = { Part(boundary, "msg", message) }
-	if title ~= "" then parts[#parts + 1] = Part(boundary, "title", title) end
-	parts[#parts + 1] = Part(boundary, "duration", tostring(Seconds()))
-	parts[#parts + 1] = Part(boundary, "position", tostring(Position("nfa")))
-	parts[#parts + 1] = Part(boundary, "bkgcolor", NFA_BACKGROUND)
-	parts[#parts + 1] = Part(boundary, "transparency", NFA_TRANSPARENCY)
-	parts[#parts + 1] = Part(boundary, "interrupt", "0")
-	if item.picture then parts[#parts + 1] = Part(boundary, "imageurl", item.picture) end
-	parts[#parts + 1] = "--" .. boundary .. "\r\nContent-Disposition: form-data; name=\"filename\"; filename=\"icon.png\"\r\n"
-		.. "Content-Type: application/octet-stream\r\n\r\n" .. NFA_ICON .. "\r\n"
-	parts[#parts + 1] = "--" .. boundary .. "--\r\n"
-	return table.concat(parts)
-end
-
--- PiPup: JSON
-function PipupBody(item)
-	local title, message = Texts(item)
 	local popup = JsonObject({
-		id = POPUP_ID, duration = Seconds(), position = Position("pipup"),
-		titleSize = 20, messageSize = 16, backgroundColor = "#E6000000",
+		id = POPUP_ID, duration = Seconds(), position = TV_POSITIONS[Properties["Position"] or ""] or 0,
 	})
 	if title ~= "" then popup.title = title end
 	if message ~= "" then popup.message = message end
-	if item.picture then
-		popup.media = JsonObject({ image = JsonObject({ uri = item.picture, width = PIPUP_IMAGE_WIDTH }) })
+	-- The picture inline (fetched by the driver), else its address for PiPup to fetch
+	local uri = item.pictureData or item.picture
+	if uri then
+		popup.media = JsonObject({ image = JsonObject({ uri = uri, width = PIPUP_IMAGE_WIDTH }) })
 	end
 	return JsonEncode(popup)
 end
@@ -343,33 +301,20 @@ end
 -- done(ok, why) exactly once; item.sentMs is set when the pop-up goes to the TV
 function TvShow(item, done)
 	if not ValidAddress(gTv.host) then return done(false, "no TV address") end
-	local app = TvApp()
-	local function answered(code, body, fail)
-		if fail then
-			Unanswered(fail, app.timeoutS)
-			return done(false, FailText(fail, app.timeoutS))
-		end
-		if code ~= 200 then
-			return done(false, app.name .. " answered HTTP " .. tostring(code) .. (body ~= "" and (": " .. string.sub(body, 1, 80)) or ""))
-		end
-		gTv.sent = gTv.sent + 1
-		if gTv.app == "nfa" and gTv.state ~= "ready" then
-			SetState("ready")
-			ScheduleCheck(true)
-		end
-		done(true)
-	end
-	if gTv.app == "pipup" then
-		ReadState(function(ok, why)
-			if not ok then return done(false, why) end
-			if gTv.overlay == false then return done(false, "PiPup may not draw over other apps on the TV") end
-			if gTv.screenOn == false then return done(false, "the TV's screen is off") end
-			item.sentMs = NowMs()
-			Http("POST", "/notify", PipupBody(item), { ["Content-Type"] = "application/json; charset=utf-8" }, app.timeoutS, answered)
-		end)
-	else
-		local boundary = "DirectorLink" .. string.format("%08x", math.random(0, 2147483646)) .. tostring(gTv.req)
+	ReadStatus(function(ok, why)
+		if not ok then return done(false, why) end
 		item.sentMs = NowMs()
-		Http("POST", "/", NfaBody(item, boundary), { ["Content-Type"] = "multipart/form-data; boundary=" .. boundary }, app.timeoutS, answered)
-	end
+		Http("POST", "/notify", PipupBody(item), TV_TIMEOUT_S, function(code, body, fail)
+			if fail then
+				Unanswered(fail, TV_TIMEOUT_S)
+				return done(false, FailText(fail, TV_TIMEOUT_S))
+			end
+			if code == 401 or code == 403 then return done(false, Refusal(code)) end
+			if code ~= 200 then
+				return done(false, "PiPup answered HTTP " .. tostring(code) .. (body ~= "" and (": " .. string.sub(body, 1, 80)) or ""))
+			end
+			gTv.sent = gTv.sent + 1
+			done(true)
+		end)
+	end)
 end

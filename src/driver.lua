@@ -3,10 +3,10 @@
     https://directorlink.io/drivers/android-tv
 
     Shows notifications as a pop-up, with a picture (who is at the door or
-    the gate), on a TV that runs Google TV, Android TV or Fire TV, on the
-    home network only. One driver per TV. The TV runs one of two free apps
-    that take pop-ups over the network (tvapp.lua): "Notifications for
-    Android TV" (Google Play, Amazon Appstore) or PiPup.
+    the gate), on a TV that runs Google TV or Android TV, on the home network
+    only. One driver per TV. The TV runs PiPup - TV Notifications by
+    Alexander Savin (Google Play: nyc.savin.pipup), a free app that takes
+    pop-ups over the network (tvapp.lua).
 
       - What it shows: DirectorLink's notifications (the DirectorLink
         notification agreement, version 1: DIRECTORLINK_NOTIFY), the Show
@@ -18,7 +18,7 @@
       - Off, or no answer within 3 seconds: the pop-up is dropped with one log
         line. The driver never turns the TV on.
       - Finding TVs: an SSDP search for casting devices (ssdp.lua), each asked
-        whether the app answers; or the TV's IP address typed in.
+        whether PiPup answers; or the TV's IP address typed in.
 
     DirectorLink notification agreement v1: variables DIRECTORLINK_NOTIFY = "1"
     and DIRECTORLINK_NOTIFY_KINDS (the kinds switched on, from doorbell,
@@ -38,31 +38,31 @@ AGREEMENT_VERSION = 1
 TEST_TEXT = { title = "Control4", message = "Test: pop-ups from Control4 work on this TV." }
 FIND_PROBE_S = 2
 
-gState = { savedVars = {}, quietOk = true, foundAt = nil, found = {}, savedHost = nil, savedApp = nil }
+gState = { savedVars = {}, quietOk = true, foundAt = nil, found = {}, savedHost = nil }
 
 --[[=============================================================================
     Saved state
-    DL_TV: the address and app the rest applies to, whether the app answered
-    there, and what PiPup said about the TV. DL_VARS: LAST_NOTIFICATION.
+    DL_TV: the address the rest applies to, whether PiPup answered there,
+    and what PiPup said about the TV. DL_VARS: LAST_NOTIFICATION. The token
+    stays in its property.
 ===============================================================================]]
 function SaveState()
 	StoreSet("DL_TV", JsonObject({
-		host = gTv.host, app = gTv.app, seen = gTv.seenHere and gTv.host or nil,
-		info = JsonObject({ name = gTv.info.name, model = gTv.info.model, maker = gTv.info.maker, android = gTv.info.android }),
+		host = gTv.host, seen = gTv.seenHere and gTv.host or nil,
+		info = JsonObject({ name = gTv.info.name, version = gTv.info.version }),
 	}))
 end
 
 local function LoadState()
 	local s = StoreGet("DL_TV")
 	if type(s) ~= "table" then return end
-	local host, app = JsonField(s, "host"), JsonField(s, "app")
+	local host = JsonField(s, "host")
 	gState.savedHost = type(host) == "string" and host or ""
-	gState.savedApp = TV_APPS[app] and app or nil
 	gState.seenHost = JsonField(s, "seen")
 	local info = JsonField(s, "info")
 	if type(info) == "table" then
 		gState.savedInfo = {}
-		for _, k in ipairs({ "name", "model", "maker", "android" }) do
+		for _, k in ipairs({ "name", "version" }) do
 			local v = JsonField(info, k)
 			if type(v) == "string" then gState.savedInfo[k] = v end
 		end
@@ -87,13 +87,14 @@ local function SetLogPrefix()
 	LOG_PREFIX = "Android TV" .. ((type(name) == "string" and name ~= "") and (" '" .. name .. "'") or "")
 end
 
-local function AppFromProperty()
-	return TV_APP_BY_NAME[Properties["TV App"] or ""] or "nfa"
+local function PortFromProperty()
+	local n = tonumber(Properties["PiPup Port"] or "")
+	if n and n >= 1 and n <= 65535 then return math.floor(n) end
+	return PIPUP_PORT
 end
 
 function StatusText()
 	local text
-	local app = TvApp()
 	local s = gTv.state
 	if not ValidAddress(gTv.host) then
 		text = "Enter the TV's IP address, or pick it in TVs Found"
@@ -101,11 +102,12 @@ function StatusText()
 		text = "Ready"
 	elseif s == "off" then
 		text = "Off"
-	elseif s == "nooverlay" then
-		text = "PiPup may not show pop-ups: allow it to display over other apps (or run its install script again)"
+	elseif s == "token" then
+		text = gTv.token ~= "" and "PiPup did not take the token: check PiPup Token" or "PiPup asks for a token: enter the one from PiPup's settings in PiPup Token"
+	elseif s == "blocked" then
+		text = "PiPup refuses this controller: allow " .. (ControllerAddress() or "its address") .. " in PiPup's settings (IP allowlist)"
 	elseif s == "noapp" then
-		text = gTv.app == "pipup" and "The TV answers, but PiPup does not: install it with its script"
-			or ("The TV answers, but " .. app.name .. " does not: install it and open it once on the TV")
+		text = "The TV answers, but PiPup does not: open PiPup on the TV (or check PiPup Port)"
 	elseif s == "unreachable" then
 		text = gTv.seenHere and "Off" or "Not reachable"
 	else
@@ -115,15 +117,12 @@ function StatusText()
 	return text
 end
 
--- "Living Room TV · Sony BRAVIA 4K GB · Android 12 · PiPup 0.26.1" (PiPup says it), else the app
+-- "SONY XR-77A95L · PiPup 0.3.4", as PiPup's /status says it
 function TvText()
 	local parts = {}
 	local i = gTv.info
 	if i.name and i.name ~= "" then parts[#parts + 1] = i.name end
-	local device = trim((i.maker or "") .. " " .. (i.model or ""))
-	if device ~= "" then parts[#parts + 1] = device end
-	if i.android then parts[#parts + 1] = "Android " .. i.android end
-	parts[#parts + 1] = TvApp().name .. (i.version and (" " .. i.version) or "")
+	parts[#parts + 1] = "PiPup" .. (i.version and (" " .. i.version) or "")
 	return table.concat(parts, " · ")
 end
 
@@ -137,7 +136,7 @@ end
 -- From tvapp.lua: the state of the TV or what it said about itself changed
 function TvChanged()
 	local seen = gTv.seenHere and gTv.host or nil
-	local key = tostring(gTv.info.name) .. "|" .. tostring(gTv.info.model) .. "|" .. tostring(gTv.info.android)
+	local key = tostring(gTv.info.name) .. "|" .. tostring(gTv.info.version)
 	if seen ~= gState.seenHost or key ~= gState.savedInfoKey then
 		gState.seenHost, gState.savedInfoKey = seen, key
 		SaveState()
@@ -167,7 +166,7 @@ local function CheckQuietHours()
 end
 
 --[[=============================================================================
-    The TV's address and app
+    The TV's address, PiPup's port and token
 ===============================================================================]]
 local function ApplyTv(reason)
 	local host = trim(Properties["TV IP Address"])
@@ -175,31 +174,31 @@ local function ApplyTv(reason)
 		LogWarn("TV IP Address '%s' is not an address", host)
 		host = ""
 	end
-	local app = AppFromProperty()
-	if host == gTv.host and app == gTv.app and gTv.state ~= "idle" then return end
-	NotifyFlush("the TV's address or app changed")
+	local port, token = PortFromProperty(), trim(Properties["PiPup Token"])
+	if host == gTv.host and port == gTv.port and token == gTv.token and gTv.state ~= "idle" then return end
+	NotifyFlush("the TV's address changed")
 	local sameTv = host == gState.savedHost
-	gState.savedHost, gState.savedApp = host, app
+	gState.savedHost = host
 	if host ~= "" then
-		LogInfo("TV %s with %s%s", host, TV_APPS[app].name, reason and (" (" .. reason .. ")") or "")
+		LogInfo("TV %s, PiPup on port %d%s%s", host, port, token ~= "" and ", with a token" or "", reason and (" (" .. reason .. ")") or "")
 	end
-	TvConfigure(host, app, sameTv)
+	TvConfigure(host, port, token, sameTv)
 	SaveState()
 	UpdateStatus()
 end
 
 --[[=============================================================================
-    Finding TVs: the casting devices on the network, each asked whether the app answers
+    Finding TVs: the casting devices on the network, each asked whether PiPup answers
 ===============================================================================]]
 local function FoundItem(dev)
 	local name = dev.name or trim((dev.maker or "") .. " " .. (dev.model or ""))
 	if name == "" then name = "TV" end
-	return name .. " (" .. dev.ip .. ")" .. (dev.app and (" - " .. TvApp().name .. " answers") or "")
+	return name .. " (" .. dev.ip .. ")" .. (dev.app and " - PiPup answers" or "")
 end
 
+-- GET /ping: "pipup <version>"
 local function ProbeApp(dev, done)
-	local app = TV_APPS[AppFromProperty()]
-	local url = "http://" .. dev.ip .. ":" .. app.port .. (app.key == "pipup" and "/state" or "/")
+	local url = "http://" .. dev.ip .. ":" .. PortFromProperty() .. "/ping"
 	local over = false
 	local function finish(answers)
 		if over then return end
@@ -213,7 +212,8 @@ local function ProbeApp(dev, done)
 		x:SetOptions({ fail_on_error = false, timeout = FIND_PROBE_S, connect_timeout = FIND_PROBE_S })
 		x:OnDone(function(_, responses, errCode)
 			KillTimer("FIND_PROBE_" .. dev.ip)
-			finish((errCode == nil or errCode == 0) and responses ~= nil and responses[#responses] ~= nil)
+			local resp = responses and responses[#responses]
+			finish((errCode == nil or errCode == 0) and resp ~= nil and string.find(string.lower(tostring(resp.body or "")), "pipup", 1, true) == 1)
 		end)
 		x:Get(url, {})
 	end)
@@ -330,10 +330,10 @@ local function PrintDiagnostics()
 		"Driver        : " .. DRIVER_SEMVER .. (build ~= "" and (" (" .. build .. ")") or "") .. " on Control4 OS " .. (v and v.text or "?")
 			.. ", device " .. tostring(MyDeviceId()) .. ", controller " .. tostring(ControllerAddress()),
 		"Status        : " .. tostring(Properties["Status"]),
-		"TV            : " .. (gTv.host ~= "" and (gTv.host .. ":" .. TvApp().port) or "(no address)") .. " - " .. TvText(),
-		"App           : " .. TvApp().name .. ", " .. TvStateText()
-			.. (gTv.app == "pipup" and (", screen " .. (gTv.screenOn == nil and "?" or (gTv.screenOn and "on" or "off"))
-				.. ", may draw over other apps: " .. (gTv.overlay == nil and "?" or (gTv.overlay and "yes" or "NO"))) or ""),
+		"TV            : " .. (gTv.host ~= "" and (gTv.host .. ":" .. gTv.port) or "(no address)") .. " - " .. TvText(),
+		"PiPup         : " .. TvStateText() .. ", screen " .. (gTv.screenOn == nil and "?" or (gTv.screenOn and "on" or "off"))
+			.. ", token " .. (gTv.authEnabled == true and "required" or (gTv.authEnabled == false and "not required" or "?"))
+			.. (gTv.token ~= "" and " (one is set, never shown)" or "") .. ", " .. gTv.sent .. " pop-ups sent",
 		"Checks        : " .. gTv.checks .. (gTv.lastOkAt and (", last answer " .. ClockText(gTv.lastOkAt)) or ", no answer yet")
 			.. (gTv.nextCheckAt and (", next " .. ClockText(gTv.nextCheckAt)) or ""),
 		"Last error    : " .. (gTv.lastError and (gTv.lastError .. " at " .. ClockText(gTv.lastErrorAt)) or "none"),
@@ -405,12 +405,12 @@ function OnDriverLateInit(dit)
 	SetVar("DIRECTORLINK_NOTIFY_KINDS", KindsText(), true)
 	local host = trim(Properties["TV IP Address"])
 	if host ~= "" and not ValidAddress(host) then host = "" end
-	local app = AppFromProperty()
 	local sameTv = host ~= "" and host == gState.savedHost and gState.seenHost == host
-	gTv.host, gTv.app = host, app
+	gTv.host, gTv.port, gTv.token = host, PortFromProperty(), trim(Properties["PiPup Token"])
+	RegisterSecret(gTv.token)
 	gTv.seenHere = sameTv
 	if sameTv and gState.savedInfo then gTv.info = gState.savedInfo end
-	gState.savedHost, gState.savedApp = host, app
+	gState.savedHost = host
 	local from = ParseQuietHours(Properties["Quiet Hours"])
 	gState.quietOk = from ~= false
 	UpdatePropertyList("TVs Found", { "-" }, "-")
@@ -432,14 +432,12 @@ KIND_PROPERTY_NAMES = {}
 for _, k in ipairs(NOTIFY_KINDS) do KIND_PROPERTY_NAMES[KIND_PROPERTY[k]] = k end
 
 function OnPropertyChanged(name)
-	LogDebug("Property changed: %s = %s", name, tostring(Properties[name]))
+	LogDebug("Property changed: %s = %s", name, name == "PiPup Token" and "***" or tostring(Properties[name]))
 	if name == "Log Level" then
 		ApplyLogSettings()
-	elseif name == "TV IP Address" then
+	elseif name == "TV IP Address" or name == "PiPup Port" or name == "PiPup Token" then
 		-- Applied once the installer is done typing
 		SetTimer("ADDRESS_APPLY", 1500, function() ApplyTv() end)
-	elseif name == "TV App" then
-		ApplyTv("the app changed")
 	elseif name == "TVs Found" then
 		PickFound()
 	elseif name == "Quiet Hours" then

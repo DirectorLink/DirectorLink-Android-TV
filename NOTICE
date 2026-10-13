@@ -9,18 +9,16 @@ Android TV, Google TV and Fire TV are trademarks of their owners. Product names 
 
 Credits
 
-No third-party code is included. The request to "Notifications for Android TV" (Christian
-Fees, dream apps; no published API) follows Home Assistant's nfandroidtv integration
-(https://github.com/home-assistant/core, Apache License 2.0), its notifications-android-tv
-library (https://github.com/engrbm87/notifications_android_tv, MIT License) and FHEM's
-NotifyAndroidTV module; the icon sent with it is the 1 x 1 transparent PNG that library
-sends. The requests to PiPup follow PiPup's documentation
-(https://github.com/mhoogenbosch/PiPup, MIT License for that fork's work). No code was
-copied from them.
+No third-party code is included. The driver works with "PiPup - TV Notifications" by
+Alexander Savin (Google Play: nyc.savin.pipup; https://pipup.android.savin.nyc), a fork of
+PiPup by rogro82. The requests to it follow PiPup's "How to use" page
+(https://pipup.android.savin.nyc/how-to-use.html) and its maker's Home Assistant
+integration (https://github.com/alex-savin/hassio-integration-pipup-notification, MIT
+License); no code was copied from them.
 
 Finding TVs (SSDP) follows Snap One's SSDP module as DirectorLink uses it
 (https://github.directorlink.io, Apache License 2.0). Control4 interfaces follow the public
 Snap One DriverWorks documentation (https://snap-one.github.io/docs-driverworks-fundamentals/).
 
-The test fixtures in tests/ describe a made-up home; names, addresses and ids in them are
-invented.
+The test fixtures in tests/ describe a made-up home; names, addresses, tokens and ids in them
+are invented, except PiPup's answers, which follow what PiPup 0.3.4 answered on a real TV.

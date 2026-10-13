@@ -2,6 +2,16 @@
 
 All notable changes to DirectorLink · Android TV Notifications for Control4. Versions follow the `VERSION` file; the driver version Composer compares is in brackets.
 
+## 1.0.0-beta.2 (1000002) - 2026-10-13
+
+The driver works with one TV app, **PiPup — TV Notifications** by Alexander Savin (Google Play: `nyc.savin.pipup`), as PiPup documents its API, and carries the picture inside the pop-up. Tested on a Sony XR-77A95L (Google TV) with PiPup 0.3.4, from a computer running the driver's own code.
+
+- Why beta.1 showed nothing on that TV: it spoke to "Notifications for Android TV" by default (port 7676, where nothing answered) and to another PiPup fork. Both are gone, with the **TV App** property.
+- PiPup's API: `GET /status` before each pop-up (screen off: nothing sent; a token wanted: Status says so), `POST /notify` with JSON, `GET /ping` for Find TVs. New properties **PiPup Port** (7979) and **PiPup Token** (sent as `Authorization: Bearer`, never logged). Status names the controller's address when PiPup's IP allowlist refuses it (403).
+- Pictures: the driver fetches the picture (127.0.0.1 works; a login in a camera's address is sent as a login) and sends it inline as a `data:` URI; the address goes instead when it is not fetched within 2 seconds, is not a picture, or is larger than 1.5 MB.
+- Find TVs marks the TVs where PiPup answers.
+- From beta.1: updates in place; install PiPup on the TV.
+
 ## 1.0.0-beta.1 (1000001) - 2026-10-12
 
 First release, a **beta**: built on what the two TV apps take, as Home Assistant, FHEM and PiPup's own documentation describe it, tested against fake apps and a fake Director, not yet confirmed on a real TV.

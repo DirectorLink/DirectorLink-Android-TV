@@ -1,131 +1,66 @@
-"""The TV apps for the tests, as the open-source clients (Home Assistant, FHEM) and PiPup's own
-documentation describe them, and the SSDP answers of casting devices.
+"""PiPup for the tests, as "PiPup - TV Notifications" by Alexander Savin (Google Play
+nyc.savin.pipup) answers: its "How to use" page (https://pipup.android.savin.nyc/how-to-use.html),
+its maker's Home Assistant integration (github.com/alex-savin/hassio-integration-pipup-notification)
+and what PiPup 0.3.4 answered on a real Sony TV (2026-10-13). And the SSDP answers of casting
+devices.
 
-- FakeNfa: "Notifications for Android TV" on port 7676. GET / answers (Home Assistant's
-  check); POST / takes multipart/form-data with msg (needed), title, duration, position,
-  bkgcolor, transparency, interrupt, imageurl and the icon as the file part "filename".
-  The form is parsed strictly (boundary, CRLF, closing delimiter); every field is kept as text.
-- FakePiPup: PiPup (the maintained fork) on port 7979. GET /state (screenOn, permissions.overlay,
-  device, name, version); POST /notify with JSON, 200 once the pop-up is on the screen.
-- Each: running (False: the connection is refused at once), network (False: no answer at all,
-  the TV off or gone), delay_ms (how long it takes to answer).
+- FakePiPup (port 7979): GET /ping "pipup 0.3.4"; GET /status {"version","id","name","port",
+  "active","count","screenOn","uptimeSeconds","authEnabled"} (no token needed); GET /state is
+  not PiPup's ("not found: /state", 404); POST /notify with JSON -> {"status":"ok","id":...};
+  with a token set, every request but /ping and /status needs "Authorization: Bearer <token>"
+  (401); blocked (the IP allowlist without the controller): 403.
+- running (False: the connection is refused at once), network (False: no answer at all, the TV
+  off or gone), delay_ms (how long it takes to answer).
 - FakeSSDP: casting devices answering the DIAL search, each with its description.
 """
 import json
-import re
 
 
-class FakeApp:
-    port = 0
+class FakePiPup:
+    """PiPup - TV Notifications (nyc.savin.pipup) on port 7979."""
+    port = 7979
 
     def __init__(self, ip="192.168.50.50"):
         self.ip = ip
         self.running = True
         self.network = True
         self.delay_ms = 30
-        self.requests = []   # (method, path, headers, body)
+        self.screen_on = True
+        self.token = ""          # set in PiPup's settings: requests need it
+        self.blocked = False     # the IP allowlist leaves the controller out
+        self.has_status = True
+        self.requests = []       # (method, path, headers, body)
+        self.shown = []          # the /notify JSON bodies taken
 
     def attach(self, d):
         d.serve(f"{self.ip}:{self.port}", self)
         return self
 
-    def gate(self, method, path, headers, body):
+    def status(self):
+        return {"version": "0.3.4", "id": "4613e383-04aa-3839-be1d-57ddd9a0e209", "name": "SONY XR-77A95L", "port": self.port,
+                "active": False, "count": len(self.shown), "screenOn": self.screen_on, "uptimeSeconds": 517,
+                "authEnabled": self.token != ""}
+
+    def http(self, method, path, headers, body):
         self.requests.append((method, path, headers, body))
         if not self.network:
             return ("silent",)
         if not self.running:
             return ("refused",)
-        return None
-
-
-def parse_multipart(content_type, body):
-    """Strict multipart/form-data: {name: (headers dict, bytes)} or raises."""
-    m = re.match(r"multipart/form-data;\s*boundary=(\S+)$", content_type or "")
-    if not m:
-        raise ValueError(f"not multipart/form-data with a boundary: {content_type!r}")
-    boundary = m.group(1).encode()
-    if not body.startswith(b"--" + boundary + b"\r\n"):
-        raise ValueError("the body does not start with the boundary")
-    if not body.endswith(b"--" + boundary + b"--\r\n"):
-        raise ValueError("the body does not end with the closing delimiter")
-    parts = {}
-    for chunk in body.split(b"--" + boundary)[1:-1]:
-        if not chunk.startswith(b"\r\n") or not chunk.endswith(b"\r\n"):
-            raise ValueError("a part is not framed by CRLF")
-        head, _, data = chunk[2:-2].partition(b"\r\n\r\n")
-        headers = {}
-        for line in head.split(b"\r\n"):
-            k, _, v = line.decode("latin-1").partition(":")
-            headers[k.strip().lower()] = v.strip()
-        name = re.search(r'name="([^"]+)"', headers.get("content-disposition", ""))
-        if not name:
-            raise ValueError("a part without a name")
-        parts[name.group(1)] = (headers, data)
-    return parts
-
-
-class FakeNfa(FakeApp):
-    """Notifications for Android TV (port 7676)."""
-    port = 7676
-
-    def __init__(self, ip="192.168.50.50"):
-        super().__init__(ip)
-        self.shown = []          # the notifications taken: {field: text}, plus "icon" bytes
-        self.status = 200
-
-    def http(self, method, path, headers, body):
-        g = self.gate(method, path, headers, body)
-        if g:
-            return g
-        if method == "GET" and path == "/":
-            return ("ok", 200, {"Content-Type": "text/html"}, b"<html>Notifications for Android TV</html>", self.delay_ms)
-        if method == "POST" and path == "/":
-            ct = next((v for k, v in headers.items() if k.lower() == "content-type"), "")
-            try:
-                parts = parse_multipart(ct, body)
-            except ValueError as e:
-                return ("ok", 400, {}, str(e).encode(), self.delay_ms)
-            if "msg" not in parts:
-                return ("ok", 400, {}, b"msg missing", self.delay_ms)
-            note = {k: v[1].decode("utf-8") for k, v in parts.items() if k != "filename"}
-            if "filename" in parts:
-                note["icon"] = parts["filename"][1]
-                note["icon_headers"] = parts["filename"][0]
-            if self.status == 200:
-                self.shown.append(note)
-            return ("ok", self.status, {}, b"", self.delay_ms)
-        return ("ok", 404, {}, b"", self.delay_ms)
-
-
-class FakePiPup(FakeApp):
-    """PiPup, the maintained fork (port 7979)."""
-    port = 7979
-
-    def __init__(self, ip="192.168.50.50"):
-        super().__init__(ip)
-        self.screen_on = True
-        self.overlay = True
-        self.has_state = True
-        self.shown = []          # the /notify JSON bodies taken
-
-    def state(self):
-        return {
-            "app": "PiPup", "version": "0.26.1", "id": "6f1f9c1e-4a3f", "name": "Family Room TV",
-            "visible": False, "screenOn": self.screen_on, "popupsShown": len(self.shown), "uptime": 86400,
-            "device": {"model": "BRAVIA 4K VH21", "manufacturer": "Sony", "android": "12"},
-            "power": {"canWake": True, "canSleep": False},
-            "permissions": {"overlay": self.overlay, "installPackages": True, "autoStart": None, "complete": self.overlay},
-        }
-
-    def http(self, method, path, headers, body):
-        g = self.gate(method, path, headers, body)
-        if g:
-            return g
-        if path == "/state" and method in ("GET", "POST"):
-            if not self.has_state:
-                return ("ok", 404, {}, b"Not Found", self.delay_ms)
-            return ("ok", 200, {"Content-Type": "application/json"}, json.dumps(self.state()).encode(), self.delay_ms)
-        if path == "/notify" and method == "POST":
+        if self.blocked:
+            return ("ok", 403, {"Content-Type": "text/plain"}, b"forbidden", self.delay_ms)
+        route = path.split("?")[0]
+        if method == "GET" and route == "/ping":
+            return ("ok", 200, {"Content-Type": "text/plain"}, b"pipup 0.3.4", self.delay_ms)
+        if method == "GET" and route == "/status":
+            if not self.has_status:
+                return ("ok", 404, {"Content-Type": "text/plain"}, b"not found: /status", self.delay_ms)
+            return ("ok", 200, {"Content-Type": "application/json"}, json.dumps(self.status()).encode(), self.delay_ms)
+        if self.token:
+            auth = next((v for k, v in headers.items() if k.lower() == "authorization"), "")
+            if auth != f"Bearer {self.token}":
+                return ("ok", 401, {"Content-Type": "text/plain"}, b"unauthorized", self.delay_ms)
+        if method == "POST" and route == "/notify":
             ct = next((v for k, v in headers.items() if k.lower() == "content-type"), "")
             if not ct.startswith("application/json"):
                 return ("ok", 400, {}, b"invalid request: content type", self.delay_ms)
@@ -134,10 +69,11 @@ class FakePiPup(FakeApp):
             except ValueError:
                 return ("ok", 400, {}, b"invalid request: json", self.delay_ms)
             self.shown.append(popup)
-            return ("ok", 200, {"Content-Type": "text/plain"}, body, self.delay_ms)
-        if path.startswith("/power"):
-            raise AssertionError("the driver must never use /power")
-        return ("ok", 404, {}, b"Not Found", self.delay_ms)
+            return ("ok", 200, {"Content-Type": "application/json"},
+                    json.dumps({"status": "ok", "id": popup.get("id", "p1")}).encode(), self.delay_ms)
+        if route.startswith("/power"):
+            raise AssertionError("the driver must never ask PiPup to turn the screen on or off")
+        return ("ok", 404, {"Content-Type": "text/plain"}, f"not found: {route}".encode(), self.delay_ms)
 
 
 class FakeSSDP:
@@ -200,3 +136,24 @@ def attach_ssdp(d, devices):
     for dev in devices:
         d.serve(f"{dev['ip']}:8008", Description(ssdp, dev))
     return ssdp
+
+
+JPEG = (b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+        b"\xff\xc0\x00\x11\x08\x01\x68\x02\x80\x03\x01\x22\x00\x02\x11\x01\x03\x11\x01" + bytes(range(256)) * 20 + b"\xff\xd9")
+
+
+class FakePictures:
+    """A picture server (the controller's, as DirectorLink's PICTURE, or a camera's): path -> answer."""
+
+    def __init__(self, pictures=None, delay_ms=20):
+        self.pictures = pictures or {}   # path -> bytes (200), or (code, bytes)
+        self.delay_ms = delay_ms
+        self.requests = []
+
+    def http(self, method, path, headers, body):
+        self.requests.append(path)
+        v = self.pictures.get(path)
+        if v is None:
+            return ("ok", 404, {}, b"not found", self.delay_ms)
+        code, data = v if isinstance(v, tuple) else (200, v)
+        return ("ok", code, {"Content-Type": "image/jpeg"}, data, self.delay_ms)

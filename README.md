@@ -1,8 +1,8 @@
 # DirectorLink · Android TV Notifications for Control4
 
-Free, open-source Control4 driver that shows notifications as a pop-up **with a picture** on TVs that run Google TV, Android TV or Fire TV: a doorbell ring with who is at the door, a camera alert, a door or gate opened, the alarm. Part of [DirectorLink Drivers](https://directorlink.io/drivers).
+Free, open-source Control4 driver that shows notifications as a pop-up **with a picture** on TVs that run Google TV or Android TV: a doorbell ring with who is at the door, a camera alert, a door or gate opened, the alarm. Part of [DirectorLink Drivers](https://directorlink.io/drivers).
 
-It works on your local network only: the driver talks straight to a free app on the TV. No cloud, no account, no extra hardware.
+It works on your local network only: the driver talks straight to **PiPup**, a free app on the TV. No cloud, no account, no extra hardware.
 
 Free. No subscription, no license key, no account with us.
 
@@ -12,14 +12,14 @@ DirectorLink is an independent project, not affiliated with Control4 or Snap One
 
 **Download:** [releases](../../releases) · **Help and updates:** [directorlink.io/drivers/android-tv](https://directorlink.io/drivers/android-tv) (online with 1.0.0)
 
-> **Beta.** The driver sends what the apps take as Home Assistant, FHEM and PiPup's own documentation describe it, and passes its tests against fake apps built from that, but it has not run on a real TV yet. If you try it, please send the log: see [Trying the beta](#trying-the-beta).
+> **Beta.** Tested on a Sony XR-77A95L (Google TV) with PiPup 0.3.4: the driver's own code, run from a computer on the TV's network, showed pop-ups in English and Hebrew, with pictures inline and by address. Not yet confirmed from a Control4 controller: see [Trying the beta](#trying-the-beta).
 
 ## What you get
 
 | | |
 |---|---|
 | A pop-up on the TV | Over whatever is on, in a corner of the screen (you choose which), for 15 seconds or as long as you set |
-| The picture | Who is at the door or the gate, in the pop-up: the picture DirectorLink sends with a ring, or any camera's snapshot address from programming |
+| The picture | Who is at the door or the gate, in the pop-up: the picture DirectorLink sends with a ring, or any camera's snapshot from programming |
 | With DirectorLink 1.13 | DirectorLink's notifications: doorbell rings, camera alerts, doors and gates opened, the alarm, others; you choose which kinds each TV shows |
 | Composer programming | **Show Notification** (Title, Message, Picture URL); *Notification Shown* and *Notification Failed*; `LAST_NOTIFICATION` |
 | Quiet Hours | No pop-ups on this TV at night, or whenever you set |
@@ -27,56 +27,42 @@ DirectorLink is an independent project, not affiliated with Control4 or Snap One
 
 What it never does: turn the TV on, change its channel, input or volume.
 
+## The app on the TV: PiPup
+
+The TV runs **PiPup — TV Notifications** by Alexander Savin, free on Google Play ([play.google.com/store/apps/details?id=nyc.savin.pipup](https://play.google.com/store/apps/details?id=nyc.savin.pipup), [pipup.android.savin.nyc](https://pipup.android.savin.nyc)). It runs a small web server on the TV that shows a pop-up when a device on the home network asks, with no cloud and no account.
+
+**Only this PiPup.** Other apps called PiPup (the original by rogro82, and other forks) take other requests, and the driver does not work with them. In Google Play, look for **PiPup — TV Notifications** by Alexander Savin.
+
+### Setting up PiPup
+
+1. On the TV, open **Google Play**, search **PiPup — TV Notifications** and install it.
+2. Open **PiPup** once. Select **Grant display permission** (PiPup needs *Display over other apps*). On Google TV it opens the setting; on some older Android TV models the setting is not in the menus and is granted from a computer with `adb shell appops set nyc.savin.pipup SYSTEM_ALERT_WINDOW allow` (see PiPup's own instructions).
+3. PiPup's main screen shows the TV's address (for example `192.168.1.50:7979`), a QR code and a test button. Press the test button: a pop-up shows.
+4. Leave PiPup's **token** and **IP allowlist** off, or: with a token, enter the same token in the driver's **PiPup Token**; with an allowlist, add the Control4 controller's address to it.
+
+PiPup starts by itself when the TV starts.
+
 ## Which TVs
 
-Look in the TV's **Settings → About** (or **Settings → System → About**): if it says **Google TV**, **Android TV** or **Fire OS 7 / 8**, it works. The same brand often ships different systems in different countries, so check the TV itself.
+A TV or box with **Google TV** or **Android TV**, Android 7 or newer, with Google Play: look in its **Settings → About**. The same brand often ships different systems in different countries, so check the TV itself.
 
 | Works | |
 |---|---|
 | Google TV / Android TV | Sony Bravia (all since 2021), TCL (most countries), Hisense (US Google TV models), Sharp (Europe, Japan), Xiaomi, Panasonic (2026 Google TV models), Philips (2021-2025 upper range only), Nokia, Thomson, Motorola, OnePlus, Skyworth, Haier, iFFALCON, Kogan, Metz Blue, some Grundig and JVC |
-| Fire TV (Fire OS 7 / 8) | Amazon's Fire TV TVs, Panasonic 2024-2025 flagships, and the Fire TV models of TCL, Hisense, Toshiba, Xiaomi, JVC, Grundig, Insignia |
-| Streaming boxes (on any TV) | Google TV Streamer, Chromecast with Google TV, Nvidia Shield, Xiaomi TV Box S, onn. 4K, Nokia Streaming Box, Fire TV Stick / Cube with Fire OS 7 or 8 |
+| Boxes (on any TV) | Google TV Streamer, Chromecast with Google TV, Nvidia Shield, Xiaomi TV Box S, onn. 4K, Nokia Streaming Box |
+| Fire TV (Fire OS 7 / 8) | Not in Google Play: PiPup's APK can be installed by hand. Not tested |
 
 | Does not work | |
 |---|---|
-| Samsung (Tizen), Vizio, Roku TVs, Hisense and Toshiba with VIDAA, Philips 2026 (Titan OS), Loewe, Bang & Olufsen | Not Android: no app can run there |
+| Samsung (Tizen), Vizio, Roku TVs, Hisense and Toshiba with VIDAA, Philips 2026 (Titan OS), Loewe, Bang & Olufsen | Not Android |
 | LG (webOS) | Use [DirectorLink · LG TV Notifications](https://directorlink.io/drivers/lg-tv) (pop-ups without a picture) |
-| The newest Fire TV sticks (Fire TV Stick 4K Select 2025, Fire TV Stick HD 2026, Fire TV Stick 4K 3rd gen 2026) | Amazon's Vega OS runs no Android apps |
-
-## The app on the TV
-
-The TV needs one of two free apps that show pop-ups sent over the home network. Choose it per TV in the driver's **TV App** property.
-
-| | **Notifications for Android TV** (the default) | **PiPup** |
-|---|---|---|
-| Install | From **Google Play** on the TV (on Fire TV: **Notifications for Fire TV** from the Amazon Appstore) | From a computer, with PiPup's install script (the TV in developer mode) |
-| TVs | Android 11 and newer (most TVs from 2021); any Fire TV with Fire OS 7 / 8 | Android 6 and newer, older TVs too; Fire TV |
-| Picture | Yes, above the text | Yes, in the pop-up |
-| Can the driver tell that the screen is off? | No | Yes: a TV with its screen off gets nothing |
-| Made by | Christian Fees ("dream apps"); closed source | Open source ([github.com/mhoogenbosch/PiPup](https://github.com/mhoogenbosch/PiPup), the maintained version) |
-
-### Setting up Notifications for Android TV
-
-1. On the TV, open **Google Play**, search **Notifications for Android TV** and install it (Fire TV: **Notifications for Fire TV** in the Appstore).
-2. Open it once and follow its setup. Allow **Notification access** and **Display over other apps** (on Google TV: **Settings → Apps → Special app access**).
-3. Restart the TV.
-
-The app's purchases are for its phone app; the TV shows pop-ups from Control4 without them (as Home Assistant's documentation says). A system update has been seen to switch its permissions off again: if pop-ups stop, check them.
-
-### Setting up PiPup
-
-1. On the TV: **Settings → System → About**, select **Build** seven times; then in **Developer options** turn on **USB debugging** (and **Wireless debugging** on recent Google TV). Fire TV: **My Fire TV → About**, select the device name seven times, then **ADB debugging**.
-2. On a computer on the same network: download the latest release of [PiPup](https://github.com/mhoogenbosch/PiPup/releases) and run its `install.ps1` (Windows) or `install.sh` with the TV's IP address. Accept the debugging request on the TV. The script installs PiPup, gives it the permissions it needs and checks it.
-3. In the driver, set **TV App** to **PiPup**.
-
-On TCL Google TVs, follow PiPup's own TCL notes (TCL's system stops apps in the background). After reinstalling PiPup, run its script again.
+| The newest Fire TV sticks (Vega OS) | No Android apps |
 
 ## Requirements
 
 - **Control4 OS 3.3.0 or newer** and Composer Pro.
-- **A TV with Google TV, Android TV or Fire TV** (above), with one of the two apps.
-- **A fixed IP address for the TV** in the router. The controller reaches the TV on port 7676 (Notifications for Android TV) or 7979 (PiPup).
-- For pictures: the TV can reach the picture's address (the controller, or the camera) on the home network.
+- **A TV with Google TV or Android TV** running PiPup (above).
+- **A fixed IP address for the TV** in the router. The controller reaches PiPup on port 7979 (or the port set in PiPup).
 - For DirectorLink's notifications: DirectorLink 1.13 or newer.
 
 ## Installation
@@ -89,21 +75,21 @@ On TCL Google TVs, follow PiPup's own TCL notes (TCL's system stops apps in the 
 
 ## Setup
 
-1. Set up the app on the TV (above). Turn the TV on.
-2. In the driver's properties, choose the **TV App**.
-3. Pick the TV in **TVs Found** (the driver looks for TVs when it is added and asks each whether the app answers; run **Find TVs** to look again), or type its IP address in **TV IP Address**. **Status** says *Ready*.
-4. Run **Test Notification**: the TV shows *Control4 · Test: pop-ups from Control4 work on this TV.*
-5. Choose what this TV shows: **Doorbell**, **Camera Alerts**, **Doors and Gates**, **Alarm**, **Other** (Doorbell and Alarm are on), **Quiet Hours**, and the look: **Position**, **Seconds On Screen**, **Pictures**.
+1. Set up PiPup on the TV (above). Turn the TV on.
+2. Pick the TV in **TVs Found** (the driver looks for TVs when it is added; the ones where PiPup answers come first, marked *PiPup answers*; run **Find TVs** to look again), or type its IP address in **TV IP Address**. **Status** says *Ready*.
+3. Run **Test Notification**: the TV shows *Control4 · Test: pop-ups from Control4 work on this TV.*
+4. Choose what this TV shows: **Doorbell**, **Camera Alerts**, **Doors and Gates**, **Alarm**, **Other** (Doorbell and Alarm are on), **Quiet Hours**, and the look: **Position**, **Seconds On Screen**, **Pictures**.
 
 ### Status
 
 | Status | Means |
 |---|---|
-| Ready | The app answers: pop-ups show |
-| Off | The TV does not answer (it answered at this address before), or, with PiPup, its screen is off |
+| Ready | PiPup answers and the screen is on: pop-ups show |
+| Off | The TV does not answer (it answered at this address before), or its screen is off |
 | Not reachable | Nothing has answered at this address yet: check the address and that the TV is on |
-| The TV answers, but ... does not | The TV is on, the app is not running: install it and open it once (PiPup: run its script again) |
-| PiPup may not show pop-ups | PiPup lacks *Display over other apps*: run its script again |
+| The TV answers, but PiPup does not | PiPup is not running, or listens on another port: open PiPup on the TV once; check **PiPup Port** |
+| PiPup asks for a token | A token is set in PiPup: enter it in **PiPup Token** |
+| PiPup refuses this controller | PiPup's IP allowlist leaves the controller out: add the address Status names |
 | Enter the TV's IP address, or pick it in TVs Found | No address yet |
 
 When **Quiet Hours** cannot be read, **Status** adds *Quiet Hours not understood: write it as 22:00-07:00*.
@@ -113,10 +99,11 @@ When **Quiet Hours** cannot be read, **Status** adds *Quiet Hours not understood
 | Property | |
 |---|---|
 | Status | What the driver is doing (above) |
-| TV | The app, and with PiPup the TV's name, model and Android version |
-| TV App | *Notifications for Android TV* (default) or *PiPup* |
+| TV | The TV's name and PiPup's version, as PiPup reports them |
 | TV IP Address | The TV's IP address, for example `192.168.1.50` |
-| TVs Found | The TVs and casting devices that answered **Find TVs**, the ones where the app answers first. Picking one fills in TV IP Address |
+| TVs Found | The TVs and casting devices that answered **Find TVs**, the ones where PiPup answers first. Picking one fills in TV IP Address |
+| PiPup Port | 7979, unless it was changed in PiPup's settings |
+| PiPup Token | Only when a token is set in PiPup's settings: the same token. Never written to a log |
 | Doorbell · Camera Alerts · Doors and Gates · Alarm · Other | *On* or *Off*: which of DirectorLink's notifications this TV shows. Doorbell and Alarm are *On* by default |
 | Quiet Hours | From-to in the controller's local time, for example `22:00-07:00` (also `22-7`): no pop-ups then. Empty: none |
 | Pictures | *On* (default): the notification's picture shows in the pop-up |
@@ -126,25 +113,24 @@ When **Quiet Hours** cannot be read, **Status** adds *Quiet Hours not understood
 
 **Actions:** Find TVs · Test Notification · Print Diagnostics
 
-**Print Diagnostics** shows the driver version, the TV and its app, the last checks, the look, the kinds and Quiet Hours, the DirectorLink variables and the last 10 notifications with what happened to each.
+**Print Diagnostics** shows the driver version, the TV and PiPup (its screen, whether it wants a token), the last checks, the look, the kinds and Quiet Hours, the DirectorLink variables and the last 10 notifications with what happened to each. It never shows the token.
 
 ### When a pop-up shows
 
-- **The TV has 3 seconds to take the connection.** No answer (off, or not on the network): the pop-up is dropped, with one line in the log. The driver never turns the TV on.
-- **With PiPup, only when the screen is on.** PiPup tells the driver; a TV with its screen off gets nothing. Notifications for Android TV cannot tell: a TV that keeps its network on in standby takes the pop-up and nobody sees it.
+- **Only when the screen is on.** Just before each pop-up the driver asks PiPup (`/status`); a TV with its screen off gets nothing.
+- **The TV has 3 seconds to answer.** No answer (off, or not on the network): the pop-up is dropped, with one line in the log. The driver never turns the TV on.
 - **One pop-up every 5 seconds at most,** on each TV. Others wait their turn; a doorbell or the alarm goes before the rest. One that waited more than 30 seconds (a minute for a doorbell or the alarm), or that does not fit (5 wait at most), is dropped.
 - **Only the kinds switched on, and nothing during Quiet Hours.** Show Notification from programming is shown whatever the kinds, but not during Quiet Hours. Test Notification always shows.
 - **The text as it was sent:** the title and the message, Hebrew and other right-to-left languages as given.
-- **The app is checked** every minute while it answers; when it does not, after 5 s, 30 s, 2 min, then every 5 min. Each pop-up tries the TV whatever the last check said.
+- **One pop-up on the screen:** a new one replaces the one still showing.
+- **PiPup is checked** every minute while it answers; when it does not, after 5 s, 30 s, 2 min, then every 5 min. Each pop-up tries the TV whatever the last check said.
 
 ### Pictures
 
-The TV fetches the picture itself, from the address the notification gives:
-
-- **From DirectorLink**, the notification's `PICTURE`: an address on the controller. When it names the controller as `127.0.0.1` (or `localhost`), the driver gives the TV the controller's own address on the home network instead.
-- **From programming**, Show Notification's **Picture URL**: for example a camera's snapshot address. The TV fetches it straight from the camera, so the address must open without a login prompt. A login written into the address (`http://user:password@...`) may not be passed on by the TV's app (not yet confirmed); many cameras take the login as part of the address instead (for example `...snapshot?user=...&password=...`). A login in the address is never written to the log.
-
-The TV must be able to reach that address on the home network. **Pictures** *Off* sends text only.
+- **From DirectorLink**, the notification's `PICTURE` (a picture on the controller), and **from programming**, Show Notification's **Picture URL** (for example a camera's snapshot address).
+- **The driver fetches the picture itself** and sends it inside the pop-up. The TV never has to reach the controller or the camera, and a picture that lasts 60 seconds cannot expire on the way. The driver runs on the controller, so an address with `127.0.0.1` works, and a login written in a camera's address (`http://user:password@192.168.1.30/snapshot.jpg`) is sent as a login. The login is never written to the log.
+- A picture that cannot be fetched within 2 seconds, or is larger than 1.5 MB, goes as its address instead, for PiPup to fetch (`127.0.0.1` becomes the controller's address).
+- JPEG, PNG, GIF and WebP. **Pictures** *Off* sends text only.
 
 ## DirectorLink
 
@@ -167,7 +153,7 @@ DirectorLink 1.13 and newer sends its notifications to this driver as soon as bo
    | `ID` | Unique for each notification, the same for every target. The same ID again within 10 minutes is ignored |
    | `KIND` | `doorbell`, `camera`, `door`, `alarm` or `other` (another value is taken as `other`) |
    | `TITLE`, `MESSAGE` | The final text, in the home's language (it may be Hebrew, right to left), UTF-8. Shown exactly as given |
-   | `PICTURE` | Optional. An `http://` address on the controller that gives a JPEG for 60 seconds. This driver hands it to the TV, which fetches it: the address must answer on the controller's home-network address too (`127.0.0.1` is replaced by it), without a login |
+   | `PICTURE` | Optional. An `http://` address on the controller that gives a JPEG for 60 seconds. This driver fetches it and shows it in the pop-up |
 
 3. **Rules for the driver:** never block; only the kinds switched on, nothing during Quiet Hours; at most one pop-up every 5 seconds on each screen, a doorbell or the alarm first; set `LAST_NOTIFICATION`, then fire `Notification Shown` or `Notification Failed` (a notification left out on purpose fires neither); work the same without DirectorLink.
 
@@ -176,14 +162,14 @@ DirectorLink 1.13 and newer sends its notifications to this driver as soon as bo
 C4:SendToDevice(deviceId, "DIRECTORLINK_NOTIFY", {
     VERSION = "1", ID = "ring-158-1760206443", KIND = "doorbell",
     TITLE = "Front door", MESSAGE = "Someone is at the door",
-    PICTURE = "http://192.168.1.10:47200/notify/ring-158.jpg",
+    PICTURE = "http://127.0.0.1:47200/notify/ring-158.jpg",
 })
 ```
 
 ## Programming
 
-- **Command:** **Show Notification** (`SHOW_NOTIFICATION`), with **Title**, **Message** and an optional **Picture URL**. Shown whatever the kinds, not during Quiet Hours. For example: *When* the gate opens → Show Notification *Gate*, *Opened*, and the gate camera's snapshot address (see [Pictures](#pictures)).
-- **Events:** **Notification Shown** · **Notification Failed** (off, not reachable, the app not running, or no answer).
+- **Command:** **Show Notification** (`SHOW_NOTIFICATION`), with **Title**, **Message** and an optional **Picture URL**. Shown whatever the kinds, not during Quiet Hours. For example: *When* the gate opens → Show Notification *Gate*, *Opened*, `http://user:password@192.168.1.31/snapshot.jpg` (the gate camera's snapshot).
+- **Events:** **Notification Shown** · **Notification Failed** (off, not reachable, PiPup not running or refusing, or no answer).
 - **Variable:** `LAST_NOTIFICATION` (STRING): the text of the last pop-up shown or failed, as `Title: Message`. Set before the event fires.
 - **Several TVs:** add Show Notification for each TV in the same *When*; they run one after the other at once.
 
@@ -193,39 +179,40 @@ C4:SendToDevice(deviceId, "DIRECTORLINK_NOTIFY", {
 2. Check that the name is exactly `DirectorLink-Android-TV.c4z`, not `... (1).c4z`.
 3. **Driver → Add or Update Driver or Agent**. The driver keeps its settings and the programming.
 
+**From 1.0.0-beta.1:** the **TV App** property is gone (the driver works with PiPup only); install PiPup on the TV as above.
+
 ## Troubleshooting
 
 | What you see | What to do |
 |---|---|
-| Not reachable | Check **TV IP Address**, that the TV is on, and that the controller and the TV are on the same network. **Find TVs** lists what answers |
-| The TV answers, but Notifications for Android TV does not | Install it from Google Play on the TV and open it once; check its permissions (above) |
-| *Ready*, but nothing on the screen | Notifications for Android TV: allow *Display over other apps* and *Notification access*, restart the TV. PiPup: run its script again |
-| The pop-up shows, without the picture | The TV cannot reach the picture's address: try it in a browser on another device on the TV's network |
+| Not reachable | Check **TV IP Address**, that the TV is on, and that the controller and the TV are on the same network. **Find TVs** lists what answers; PiPup's main screen shows the TV's address |
+| The TV answers, but PiPup does not | Open PiPup on the TV once; check **PiPup Port** against the port PiPup's screen shows |
+| PiPup asks for a token / refuses this controller | Enter PiPup's token in **PiPup Token**, or add the controller's address to PiPup's allowlist (or turn them off in PiPup) |
+| *Ready*, but nothing on the screen | In PiPup, select **Grant display permission** again, and try PiPup's own test button |
+| A pop-up without its picture | **Print Diagnostics** and the log at *Debug* say why the picture could not be fetched |
 | *Ready*, but no pop-ups from DirectorLink | Check the kinds and **Quiet Hours**. **Print Diagnostics** lists the last 10 notifications and why each was skipped or not shown |
-| Off, but the TV is on | Notifications for Android TV: the app may have been stopped by the TV; open it once. PiPup: its screen reports off |
 
 For details run **Print Diagnostics**, with **Log Level** set to *Debug*. The output appears in the Lua tab and in the driver log.
 
 ## Trying the beta
 
-1. Set up **Notifications for Android TV** on the TV (and, if you can, PiPup too), give the TV a fixed IP address and turn it on.
+1. Install PiPup on the TV and press its test button. Give the TV a fixed IP address and turn it on.
 2. Add **DirectorLink · Android TV Notifications** to the TV's room, set **Log Level** to *Trace*, and pick the TV in **TVs Found** (or type its address).
 3. Run **Test Notification**. Then **Show Notification** from programming with a Hebrew title and message and a camera's snapshot address as **Picture URL**.
-4. Put the TV in standby and run **Test Notification** again.
-5. Set **TV App** to *PiPup* (if installed) and repeat 3 and 4.
-6. Run **Print Diagnostics** and send it with the Lua tab output (or `driver_log.log`), the TV's model, and photos of the pop-ups, in an [issue](../../issues).
+4. Turn the TV off (standby) and run **Test Notification** again: nothing shows, and the log says why (its screen is off, or it did not answer within 3 s).
+5. Run **Print Diagnostics** and send it with the Lua tab output (or `driver_log.log`), the TV's model, and photos of the pop-ups, in an [issue](../../issues).
 
-Every line of the driver carries `Android TV '<name>':` after its time and level. It never shows a login from a picture's address.
+Every line of the driver carries `Android TV '<name>':` after its time and level. It never shows the token or a login from a picture's address.
 
 ## Privacy
 
-The driver talks only to the TV on your home network (and, for **Find TVs**, to the casting devices that answer the search there). It sends nothing to DirectorLink, Google, Amazon, the app makers or anyone else, and collects no usage data. The TV fetches the picture from the address the notification gives, on the home network.
+The driver talks only to PiPup on the TV, to the picture's address it is given (the controller, a camera), and, for **Find TVs**, to the casting devices that answer the search on the home network. It sends nothing to DirectorLink, Google, the app's maker or anyone else, and collects no usage data.
 
 ## Support
 
 Community-supported, best effort. Report problems in [Issues](../../issues).
 
-Please include the TV model and its Android / Google TV / Fire OS version, the app and its version, your Control4 OS version, the **Print Diagnostics** output and the log with **Log Level** set to *Debug*. Remove addresses and names you don't want to share. Security problems: see [SECURITY.md](SECURITY.md).
+Please include the TV model and its Android / Google TV version, PiPup's version (the **TV** property), your Control4 OS version, the **Print Diagnostics** output and the log with **Log Level** set to *Debug*. Remove addresses and names you don't want to share. Security problems: see [SECURITY.md](SECURITY.md).
 
 ## Building from source
 
@@ -236,41 +223,40 @@ cd tests && python test_static.py && python test_xml.py && python test_protocol.
 python tools/build.py            # -> dist/DirectorLink-Android-TV.c4z, dist/SHA256SUMS.txt
 ```
 
-`test_static.py` needs `luac` 5.1 (`apt install lua5.1`). `tests/live_test.py` runs the same driver code against a real TV from a computer on the TV's network (not part of CI): `python tests/live_test.py find`, or `python tests/live_test.py <TV IP> [nfa|pipup] [picture URL]`.
+`test_static.py` needs `luac` 5.1 (`apt install lua5.1`). `tests/live_test.py` runs the same driver code against a real TV from a computer on the TV's network (not part of CI): `python tests/live_test.py find`, or `python tests/live_test.py <TV IP> [picture URL] [token=...]`.
 
 | Path | Contents |
 |---|---|
-| `src/core.lua` | Logging (a login in an address never logged), timers, variables and events, saved settings, utilities |
+| `src/core.lua` | Logging (the token and a login in an address never logged), timers, variables and events, saved settings, utilities |
 | `src/json.lua` | JSON (UTF-8 text through as it is) |
 | `src/ssdp.lua` | Find TVs: the SSDP search for casting devices (DIAL) and their descriptions |
-| `src/tvapp.lua` | The TV and its app: Notifications for Android TV and PiPup, the checks, the pop-up |
-| `src/notify.lua` | Notifications: IDs, kinds, Quiet Hours, one every 5 seconds, a doorbell or the alarm first, the picture's address |
+| `src/tvapp.lua` | The TV and PiPup: `/status`, `/notify`, the token, the checks |
+| `src/notify.lua` | Notifications: IDs, kinds, Quiet Hours, one every 5 seconds, a doorbell or the alarm first, the picture fetched and carried inline |
 | `src/driver.lua`, `src/driver.xml`, `src/www/` | The driver, its definition, documentation and icons |
 | `tools/` | `build.py` (package), `make_icons.py` (icons) |
-| `tests/` | `harness.py` (Lua 5.1 with a fake Director and a virtual clock), `fake_apps.py` (the two apps and the search), the tests, and `live_test.py` |
+| `tests/` | `harness.py` (Lua 5.1 with a fake Director and a virtual clock), `fake_apps.py` (PiPup as it answers, picture servers, the search), the tests, and `live_test.py` |
 | `VERSION`, `CHANGELOG.md`, `docs/releases/` | The version, the change log, and the notes for each release |
 
-The driver version Composer compares is major·1000000 + minor·10000 + patch·100 + build, where build is the beta number, or 99 for the release: `1.0.0-beta.1` → `1000001`, `1.0.0` → `1000099`.
+The driver version Composer compares is major·1000000 + minor·10000 + patch·100 + build, where build is the beta number, or 99 for the release: `1.0.0-beta.2` → `1000002`, `1.0.0` → `1000099`.
 
-The tests run the real driver code in Lua 5.1 against a fake Director and `fake_apps.py`. They cover the request to Notifications for Android TV (a strict multipart parse of every field, the icon byte for byte, Hebrew), PiPup's `/state` and `/notify` (the screen off, no overlay permission, an early PiPup without `/state`, never `/power`), the picture's address (127.0.0.1, Pictures Off, not http, a camera login kept out of the log), a TV that is off (3 s), an app not running (refused at once), slow and refusing answers, the checks (every minute; 5 s, 30 s, 2 min, then every 5 min), a restart, the agreement's variables and both ways the command comes in, the kinds, IDs, Quiet Hours, one pop-up every 5 seconds with a doorbell or the alarm first, and Find TVs.
+The tests run the real driver code in Lua 5.1 against a fake Director and `fake_apps.py`, PiPup as it answered on a real TV. They cover `/status` before each pop-up (the screen off, a token wanted), `/notify` (Hebrew, position, duration, the picture), a token (401) and the IP allowlist (403), a TV that is off (3 s), PiPup not running (refused at once), slow answers, the pictures (fetched and carried inline byte for byte, a camera with a login, not a picture, too large, too slow, Pictures Off), the checks (every minute; 5 s, 30 s, 2 min, then every 5 min), a restart, the agreement's variables and both ways the command comes in, the kinds, IDs, Quiet Hours, one pop-up every 5 seconds with a doorbell or the alarm first, Find TVs, and that no log line shows the token or a login.
 
 **How it works**
 
-- **Notifications for Android TV:** `POST http://<TV>:7676/` as `multipart/form-data` with `msg`, `title`, `duration`, `position`, `bkgcolor`, `transparency`, `interrupt`, `imageurl` and a small icon as the file part `filename`, the request Home Assistant's integration and FHEM send. `GET /` checks that it answers.
-- **PiPup:** `GET http://<TV>:7979/state` (the screen, the overlay permission, the device), then `POST /notify` with JSON (`id`, `duration`, `position`, `title`, `message`, `media.image`).
-- **Find TVs:** SSDP `M-SEARCH` for `urn:dial-multiscreen-org:service:dial:1`; each device's description (`friendlyName`) and a quick request to the chosen app's port.
+- **PiPup:** `GET http://<TV>:7979/status` (version, name, `screenOn`, `authEnabled`), then `POST /notify` with JSON: `id`, `title`, `message`, `duration`, `position`, `media.image.uri` (the picture inline as a `data:` URI, or its address), with `Authorization: Bearer <token>` when a token is set. Find TVs asks `GET /ping` (`pipup <version>`).
+- **Find TVs:** SSDP `M-SEARCH` for `urn:dial-multiscreen-org:service:dial:1`, each device's description (`friendlyName`), and `/ping` on PiPup's port.
 
 **Rules for new versions**
 
 - `VERSION` is the only place the version is set.
-- **Never rename** the `.c4z` file, and **never change or remove** the order of variables, event ids, command and property names. Adding new ones at the end is fine.
+- **Never rename** the `.c4z` file, and from 1.0.0 on **never change or remove** the order of variables, event ids, command and property names. Adding new ones at the end is fine.
 - Update `VERSION`, `CHANGELOG.md`, the change log in `src/www/documentation.html`, and `docs/releases/v<version>.md`. Then tag `v<version>`: GitHub Actions tests, builds and publishes the release with `SHA256SUMS.txt` (a pre-release for `-beta` versions). Releases are immutable.
 
 ## License and trademarks
 
 [Apache License 2.0](LICENSE). See also [NOTICE](NOTICE).
 
-The requests to Notifications for Android TV follow Home Assistant's [nfandroidtv integration](https://github.com/home-assistant/core/tree/dev/homeassistant/components/nfandroidtv) and [notifications-android-tv](https://github.com/engrbm87/notifications_android_tv), and FHEM; the requests to PiPup follow [PiPup's documentation](https://github.com/mhoogenbosch/PiPup). No code was copied from them. Control4 interfaces follow the public [Snap One DriverWorks documentation](https://snap-one.github.io/docs-driverworks-fundamentals/). DirectorLink's own source code: [github.directorlink.io](https://github.directorlink.io).
+The requests to PiPup follow PiPup's own documentation ([pipup.android.savin.nyc](https://pipup.android.savin.nyc/how-to-use.html)) and its maker's Home Assistant integration ([hassio-integration-pipup-notification](https://github.com/alex-savin/hassio-integration-pipup-notification), MIT). No code was copied from them. Control4 interfaces follow the public [Snap One DriverWorks documentation](https://snap-one.github.io/docs-driverworks-fundamentals/). DirectorLink's own source code: [github.directorlink.io](https://github.directorlink.io).
 
 Installing third-party drivers or changing a Control4 project can affect compatibility, support, warranty or recovery. Keep a backup of your project.
 

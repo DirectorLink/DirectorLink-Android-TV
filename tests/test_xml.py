@@ -67,12 +67,13 @@ check(not [n for n in family if "directorlink" in (n or "").lower()], "no brand 
 
 # What the installer sees, exactly
 defaults = {p.findtext("name"): p.findtext("default") for p in props}
-check(names == ["Status", "TV", "TV App", "TV IP Address", "TVs Found", "Doorbell", "Camera Alerts", "Doors and Gates", "Alarm", "Other",
-                "Quiet Hours", "Pictures", "Position", "Seconds On Screen", "Log Level"], f"the properties ({names})")
-check(defaults["TV App"] == "Notifications for Android TV" and defaults["Pictures"] == "On" and defaults["Position"] == "Top Right"
-      and defaults["Seconds On Screen"] == "15", "Notifications for Android TV (the store app) by default; pictures on; top right; 15 s")
-apps = [i.text for p in props if p.findtext("name") == "TV App" for i in p.findall("items/item")]
-check(apps == ["Notifications for Android TV", "PiPup"], f"the two apps ({apps})")
+check(names == ["Status", "TV", "TV IP Address", "TVs Found", "PiPup Port", "PiPup Token", "Doorbell", "Camera Alerts", "Doors and Gates",
+                "Alarm", "Other", "Quiet Hours", "Pictures", "Position", "Seconds On Screen", "Log Level"], f"the properties ({names})")
+check(defaults["PiPup Port"] == "7979" and defaults["Pictures"] == "On" and defaults["Position"] == "Top Right"
+      and defaults["Seconds On Screen"] == "15", "PiPup on 7979; pictures on; top right; 15 s")
+tok = [p for p in props if p.findtext("name") == "PiPup Token"]
+check(len(tok) == 1 and tok[0].findtext("password") == "true" and tok[0].findtext("type") == "STRING" and not tok[0].findtext("default"),
+      "PiPup Token is a masked STRING, empty by default")
 ranged = [p for p in props if p.findtext("type") == "RANGED_INTEGER"]
 check(all(int(p.findtext("minimum")) <= int(p.findtext("default")) <= int(p.findtext("maximum")) for p in ranged), "every RANGED_INTEGER default is in range")
 check([defaults[k] for k in ("Doorbell", "Camera Alerts", "Doors and Gates", "Alarm", "Other")] == ["On", "Off", "Off", "On", "Off"],
