@@ -319,6 +319,29 @@ d.run('DEVICES_BY_FILE["DirectorLink-Android-TV.c4z"] = { 900, 907 }; SENT_TO_DE
 d.command("SHOW_NOTIFICATION", {"Title": "List", "Message": "form", "Send To": "All TVs"})
 d.pump(6000)
 check([f[0] for f in sent_to(d)] == [907], "Director's list of device ids read either way ({id = name} or {id, ...})")
+# The file renamed on the way (a browser's "(1)"): Director lists the copies under the name it has
+d.run('DEVICES_BY_FILE["DirectorLink-Android-TV.c4z"] = nil; DRIVER_FILE_NAME = "DirectorLink-Android-TV (1).c4z"; '
+      'DEVICES_BY_FILE[DRIVER_FILE_NAME] = { [900] = "Family Room TV", [908] = "Office TV" }; SENT_TO_DEVICE = {}')
+d.command("SHOW_NOTIFICATION", {"Title": "Renamed", "Message": "file", "Send To": "All TVs"})
+d.pump(6000)
+check([f[0] for f in sent_to(d)] == [908], "the copies found under the file name Director has for the driver (C4:GetDriverFileName)")
+# Only this copy: the log says what Director listed
+d.run('DEVICES_BY_FILE = { [DRIVER_FILE_NAME] = { [900] = "Family Room TV" } }; SENT_TO_DEVICE = {}')
+d.clear()
+d.command("SHOW_NOTIFICATION", {"Title": "Alone", "Message": "here", "Send To": "All TVs"})
+d.pump(6000)
+check(sent_to(d) == [] and app.shown[-1]["title"] == "Alone", "no other copy: shown on this TV only")
+check(any("no other copy of this driver in the project (Director lists 1 under DirectorLink-Android-TV (1).c4z, "
+          "0 under DirectorLink-Android-TV.c4z; this copy is device 900)" in l for l in d.logs()),
+      f"and the log (Info) says what Director listed ({[l for l in d.logs() if 'no other copy' in l]})")
+d.run('DRIVER_FILE_NAME = "DirectorLink-Android-TV.c4z"')
+# Show Notification from another copy, if Director hands it to ReceivedFromProxy: shown, not sent on
+d.run('DEVICES_BY_FILE = { [DRIVER_FILE_NAME] = { [900] = "Family Room TV", [905] = "Bedroom TV" } }; SENT_TO_DEVICE = {}')
+d.clear()
+d.from_proxy(5001, "SHOW_NOTIFICATION", {"Title": "From", "Message": "Bedroom TV", "Picture URL": "", "Send To": "This TV"})
+d.pump(6000)
+check(app.shown[-1]["title"] == "From" and d.events() == ["Notification Shown"] and sent_to(d) == [],
+      "Show Notification from another copy through ReceivedFromProxy: shown here, not sent on")
 
 # From 1.0.0-beta.3 (a list of TVs in one driver): its first TV is this driver's TV
 d = Driver(persist={"DL_TV": 'json:{"tvs":[{"key":"%s:7979","seen":true,"name":"SONY XR-77A95L","version":"0.3.4"},'

@@ -2,6 +2,15 @@
 
 All notable changes to DirectorLink · Android TV Notifications for Control4. Versions follow the `VERSION` file; the driver version Composer compares is in brackets.
 
+## 1.0.1 (1000199) - 2026-10-13
+
+Show Notification's **Send To: All TVs** finds the other copies more surely.
+
+- The other copies are looked up under the file name the controller has for the driver (`C4:GetDriverFileName`), as well as under `DirectorLink-Android-TV.c4z`, so a driver file saved under another name (a browser's `(1)`) still finds them.
+- A Show Notification from another copy is taken whichever way the controller hands it over (ExecuteCommand or ReceivedFromProxy).
+- When no other copy is found, the log (Info) says what the controller listed and this copy's device number.
+- `tests/live_test.py alltvs <TV IP>` runs two copies of the driver on one TV.
+
 ## 1.0.0 (1000099) - 2026-10-13
 
 First full release: the 1.0.0-beta.2 driver, one copy per TV, with **Send To** added to Show Notification. Beta.2 was confirmed from a Control4 controller on a Sony XR-77A95L (Google TV) with PiPup 0.3.4: Find TVs, Test Notification, and Show Notification with a picture (fetched by the controller, sent inside the pop-up).

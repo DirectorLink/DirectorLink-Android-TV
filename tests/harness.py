@@ -52,7 +52,8 @@ function C4:UpdatePropertyList(n, items) PROP_LISTS[n] = items end
 function C4:SetPropertyAttribs(n, v) ATTRIBS[n] = v end
 function C4:GetDeviceID() return DEVICE_ID end
 function C4:GetDeviceDisplayName(id) if id == DEVICE_ID then return DISPLAY_NAME end return DEVICE_NAMES[id] end
-DEVICES_BY_FILE = {}; DEVICE_NAMES = {}; SENT_TO_DEVICE = {}
+DEVICES_BY_FILE = {}; DEVICE_NAMES = {}; SENT_TO_DEVICE = {}; DRIVER_FILE_NAME = "DirectorLink-Android-TV.c4z"
+function C4:GetDriverFileName() return DRIVER_FILE_NAME end
 function C4:GetDevicesByC4iName(name) return DEVICES_BY_FILE[name] or {} end
 function C4:SendToDevice(id, cmd, params, allowEmpty, log) SENT_TO_DEVICE[#SENT_TO_DEVICE + 1] = { id = id, cmd = cmd, params = params } end
 function C4:GetControllerNetworkAddress() return CONTROLLER_IP end

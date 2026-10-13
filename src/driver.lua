@@ -320,22 +320,34 @@ function DirectorLinkNotify(tParams, via)
 	})
 end
 
--- The other copies of this driver in the project (one per TV): their device ids
+-- The other copies of this driver in the project (one per TV): their device ids, and what
+-- Director listed (for the log). Looked up by the file name Director has for this driver
+-- (C4:GetDriverFileName) and by the name it is published under.
 function OtherCopies()
-	local ok, devs = pcall(function() return C4:GetDevicesByC4iName(DRIVER_FILE) end)
-	local me, ids, seen = MyDeviceId(), {}, {}
-	if ok and type(devs) == "table" then
-		-- Director gives { [id] = name } (or a list of ids): both are read
-		for k, v in pairs(devs) do
-			local id = (type(v) == "string" and tonumber(k)) or tonumber(v) or tonumber(k)
-			if id and id ~= me and not seen[id] then
-				seen[id] = true
-				ids[#ids + 1] = id
+	local me, ids, seen, listed = MyDeviceId(), {}, {}, {}
+	local files = { DRIVER_FILE }
+	local okFile, own = pcall(function() return C4:GetDriverFileName() end)
+	if okFile and type(own) == "string" and own ~= "" and own ~= DRIVER_FILE then table.insert(files, 1, own) end
+	for _, file in ipairs(files) do
+		local ok, devs = pcall(function() return C4:GetDevicesByC4iName(file) end)
+		local count = 0
+		if ok and type(devs) == "table" then
+			-- Director gives { [id] = name } (or a list of ids): both are read
+			for k, v in pairs(devs) do
+				local id = (type(v) == "string" and tonumber(k)) or tonumber(v) or tonumber(k)
+				if id then
+					count = count + 1
+					if id ~= me and not seen[id] then
+						seen[id] = true
+						ids[#ids + 1] = id
+					end
+				end
 			end
 		end
+		listed[#listed + 1] = string.format("%d under %s", count, file)
 	end
 	table.sort(ids)
-	return ids
+	return ids, table.concat(listed, ", ")
 end
 
 -- Show Notification: on this driver's TV, and with Send To = All TVs on every other copy's TV too
@@ -344,9 +356,10 @@ local function ShowNotification(tParams)
 	local title, message, picture = Param(tParams, "Title"), Param(tParams, "Message"), Param(tParams, "Picture URL")
 	NotifyAccept({ source = "programming", title = title, message = message, picture = picture })
 	if string.lower(trim(Param(tParams, "Send To") or "")) ~= "all tvs" then return end
-	local ids = OtherCopies()
+	local ids, listed = OtherCopies()
 	if #ids == 0 then
-		LogDebug("Show Notification to All TVs: no other copy of this driver in the project")
+		LogInfo("Show Notification to All TVs: no other copy of this driver in the project (Director lists %s; this copy is device %s)",
+			listed, tostring(MyDeviceId()))
 		return
 	end
 	local names = {}
@@ -509,11 +522,15 @@ function OnPropertyChanged(name)
 	end
 end
 
--- DirectorLink's C4:SendToDevice reaches a driver here or in ExecuteCommand, depending on the device it names
+-- C4:SendToDevice reaches a driver here or in ExecuteCommand, depending on the device it names:
+-- DirectorLink's DIRECTORLINK_NOTIFY, and Show Notification from another copy (Send To: All TVs)
 function ReceivedFromProxy(idBinding, strCommand, tParams)
 	if strCommand == "DIRECTORLINK_NOTIFY" then
 		local ok, err = pcall(DirectorLinkNotify, tParams or {}, "ReceivedFromProxy")
 		if not ok then LogError("DIRECTORLINK_NOTIFY failed: %s", err) end
+	elseif strCommand == "SHOW_NOTIFICATION" then
+		local ok, err = pcall(ShowNotification, tParams or {})
+		if not ok then LogError("Command %s failed: %s", strCommand, err) end
 	end
 end
 
